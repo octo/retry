@@ -28,11 +28,28 @@ cb := func(_ context.Context) error {
 	return nil // or error
 }
 
-// Call cb via Do() until is succeeds or the 10 second timeout is reached.
-if err := Do(ctx, cb); err != nil {
+// Call cb via Do() until it succeeds or the 10 second timeout is reached.
+if err := retry.Do(ctx, cb); err != nil {
 	log.Printf("cb() = %v", err)
 }
 ```
+
+## Stability
+
+This package is still a bit rough around the edges and there might be a
+backwards compatibility breaking change or two in its future. In particular, the
+following questions are still open:
+
+  * Should options be initialized via a constructor function (as it is now) or
+    should the types be public. For example, the exponential backoff could be
+    configured like so:
+
+    ```go
+    err := retry.Do(ctx, cb, ExpBackoff{
+      Base: 100*time.Millisecond,
+      Max: 5*time.Second,
+    })
+    ```
 
 ## License
 
