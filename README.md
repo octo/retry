@@ -9,13 +9,14 @@ until they succeed.
 
 The main difference to other retry packages is support for the `context`
 package. Retries are aborted immediately when the context is cancelled, e.g.
-when a timeout is reached or a client connection has been closed. The godoc
-documentation has examples demonstrating how the `retry` and `context` packages
-interact.
+when a timeout is reached or a client connection has been closed. [The
+documentation](https://godoc.org/github.com/octo/retry) has examples
+demonstrating how the `retry` and `context` packages interact.
 
 ## Example
 
-This example, which is taken from the godoc documentation, demonstrates how
+This example, which is taken from [the
+documentation](https://godoc.org/github.com/octo/retry), demonstrates how
 retries can be cancelled after 10 seconds using the `context` package.
 
 ```go
