@@ -51,6 +51,7 @@ following questions are still open:
       Max: 5*time.Second,
     })
     ```
+  * The factor used by the exponential backoff should be configurable.
 
 ## License
 
