@@ -133,8 +133,16 @@ func ExampleExpBackoff() {
 		return nil // or error
 	}
 
+	opts := []Option{
+		ExpBackoff{
+			Base:   10 * time.Millisecond,
+			Max:    5 * time.Second,
+			Factor: 2.0,
+		},
+	}
+
 	// Call cb via Do() with custom backoff parameters.
-	if err := Do(ctx, cb, ExpBackoff(10*time.Millisecond, 5*time.Second)); err != nil {
+	if err := Do(ctx, cb, opts...); err != nil {
 		log.Printf("cb() = %v", err)
 	}
 }

@@ -7,8 +7,8 @@ import (
 )
 
 type internalOptions struct {
-	expBackoff
-	maxCalls int
+	ExpBackoff
+	Attempts
 }
 
 // Option is an option for Do().
@@ -16,37 +16,31 @@ type Option interface {
 	apply(*internalOptions)
 }
 
-type expBackoff struct {
-	base time.Duration
-	max  time.Duration
-}
-
-func (opt expBackoff) apply(opts *internalOptions) {
-	opts.expBackoff = opt
-}
-
 // ExpBackoff sets custom backoff parameters. After the first
 // failure, execution pauses for the duration specified by base. After each
 // subsequent failure the delay is doubled until max is reached. Execution is
 // never paused for longer than the duration max.
-func ExpBackoff(base, max time.Duration) Option {
-	return &expBackoff{
-		base: base,
-		max:  max,
-	}
+//
+// Implements the Option interface.
+type ExpBackoff struct {
+	Base   time.Duration
+	Max    time.Duration
+	Factor float64
 }
 
-type maxCalls int
-
-func (opt maxCalls) apply(opts *internalOptions) {
-	opts.maxCalls = int(opt)
+func (opt ExpBackoff) apply(opts *internalOptions) {
+	opts.ExpBackoff = opt
 }
 
 // Attempts sets the number of calls made to the callback, i.e. the call is
 // attempted at most n times. If all calls fail, the error of the last call is
 // returned by Do().
-func Attempts(n int) Option {
-	return maxCalls(n)
+//
+// Implements the Option interface.
+type Attempts int
+
+func (opt Attempts) apply(opts *internalOptions) {
+	opts.Attempts = opt
 }
 
 // Do repeatedly calls cb until is succeeds. After cb fails (returns a non-nil
@@ -58,9 +52,10 @@ func Attempts(n int) Option {
 // was passed in opts.
 func Do(ctx context.Context, cb func(context.Context) error, opts ...Option) error {
 	intOpts := internalOptions{
-		expBackoff: expBackoff{
-			base: 100 * time.Millisecond,
-			max:  2 * time.Second,
+		ExpBackoff: ExpBackoff{
+			Base:   100 * time.Millisecond,
+			Max:    2 * time.Second,
+			Factor: 2.0,
 		},
 	}
 
@@ -72,11 +67,11 @@ func Do(ctx context.Context, cb func(context.Context) error, opts ...Option) err
 }
 
 func do(ctx context.Context, cb func(context.Context) error, opts internalOptions) error {
-	delay := opts.expBackoff.base
+	delay := opts.ExpBackoff.Base
 	ch := make(chan error)
 
 	var err error
-	for i := 0; i < opts.maxCalls || opts.maxCalls == 0; i++ {
+	for i := 0; Attempts(i) < opts.Attempts || opts.Attempts == 0; i++ {
 		go func() {
 			ch <- cb(ctx)
 		}()
@@ -99,9 +94,9 @@ func do(ctx context.Context, cb func(context.Context) error, opts internalOption
 			ticker.Stop()
 		}
 
-		delay = delay * 2
-		if delay > opts.expBackoff.max {
-			delay = opts.expBackoff.max
+		delay = time.Duration(float64(delay) * opts.ExpBackoff.Factor)
+		if delay > opts.ExpBackoff.Max {
+			delay = opts.ExpBackoff.Max
 		}
 	}
 
