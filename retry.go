@@ -43,6 +43,29 @@ func (opt Attempts) apply(opts *internalOptions) {
 	opts.Attempts = opt
 }
 
+// Error is an error type that controls retry behavior. If Temporary() returns
+// false, Do() returns immediately and does not continue to call the callback
+// function.
+//
+// Error is specifically designed to be a subset of net.Error.
+type Error interface {
+	Temporary() bool
+	error
+}
+
+// permanentError is a persisting error condition.
+type permanentError struct {
+	error
+}
+
+func (permanentError) Temporary() bool { return false }
+
+// Abort wraps err so it implements the Error interface and reports a permanent
+// condition. This causes Do() to return immediately with the wrapped error.
+func Abort(err error) Error {
+	return permanentError{err}
+}
+
 // Do repeatedly calls cb until is succeeds. After cb fails (returns a non-nil
 // error), execution is paused for an exponentially increasing time. Execution
 // can be cancelled at any time by cancelling the context.
@@ -82,6 +105,12 @@ func do(ctx context.Context, cb func(context.Context) error, opts internalOption
 		case err = <-ch:
 			if err == nil {
 				return nil
+			}
+			if retryErr, ok := err.(Error); ok && !retryErr.Temporary() {
+				if p, ok := err.(permanentError); ok {
+					return p.error
+				}
+				return err
 			}
 		}
 

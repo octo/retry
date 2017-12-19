@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"net"
+	"net/http"
 	"testing"
 	"time"
 )
@@ -94,6 +96,47 @@ func TestCancelInTimer(t *testing.T) {
 	}
 }
 
+func TestAbort(t *testing.T) {
+	ctx := context.Background()
+	var n int
+
+	cb := func(ctx context.Context) error {
+		n++
+
+		err := fmt.Errorf("n = %d", n)
+		if n == 1 {
+			return err
+		}
+		return Abort(err)
+	}
+
+	if err := Do(ctx, cb); err == nil || err.Error() != "n = 2" {
+		t.Errorf("Do() = %v, want %v", err, fmt.Errorf("n = %d", 2))
+	}
+}
+
+// TestError ensures that net.Error is a superset of Error.
+func TestError(t *testing.T) {
+	// Give the net.Error interface a local name (by wrapping it in an
+	// otherwise empty interface) so that the compiler does not get
+	// confused by Error (the embedded type) and Error (the method required
+	// by the "error" interface).
+	type errInterface interface {
+		net.Error
+	}
+
+	// errType is a type implementing net.Error by embedding the interface.
+	type errType struct {
+		errInterface
+	}
+
+	// Assert that we can handle errType as an Error, too.
+	var err net.Error = errType{}
+	if _, ok := err.(Error); !ok {
+		t.Fatalf("net.Error does not implement the Error interface")
+	}
+}
+
 func ExampleDo() {
 	ctx := context.Background()
 
@@ -102,7 +145,50 @@ func ExampleDo() {
 		return nil // or error
 	}
 
-	// Call cb via Do() until is succeeds.
+	// Call cb via Do() until it succeeds.
+	if err := Do(ctx, cb); err != nil {
+		log.Printf("cb() = %v", err)
+	}
+}
+
+// This example demonstrates how responses to an HTTP request might be handled.
+// Responses with an error code between 400 and 499 will abort the Do() call,
+// since the server indicates that there is problem on the client side and
+// retrying the callback would just do the same thing again.
+func ExampleAbort() {
+	ctx := context.Background()
+
+	cb := func(ctx context.Context) error {
+		req, err := http.NewRequest(http.MethodGet, "http://example.com/", nil)
+		if err != nil {
+			return err
+		}
+		req = req.WithContext(ctx)
+
+		res, err := http.DefaultClient.Do(req)
+		if err != nil {
+			// This is likely a networking problem since the default client doesn't have any policies configured.
+			// Specifically, it may be a net.Error which implements the Error interface.
+			// Returning this may or may not abort the Do() call, depending on the error.
+			return err
+		}
+		if res.StatusCode >= 400 && res.StatusCode < 500 {
+			// Client error, i.e. we're doing someting wrong
+			// -> Abort
+			return Abort(fmt.Errorf("HTTP status %d (%q)", res.StatusCode, res.Status))
+		}
+		if res.StatusCode >= 500 {
+			// Server error, i.e. not our fault
+			// -> Try again
+			return fmt.Errorf("HTTP status %d (%q)", res.StatusCode, res.Status)
+		}
+
+		// TODO: do something meaningful with res.
+
+		return nil // Success
+	}
+
+	// Call cb via Do() until it succeeds or Abort() is returned.
 	if err := Do(ctx, cb); err != nil {
 		log.Printf("cb() = %v", err)
 	}
