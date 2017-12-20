@@ -7,11 +7,26 @@ Package **retry** implements a wrapper to retry failing function calls.
 **retry** is a package for calling functions with temporary failures repeatedly
 until they succeed.
 
-The main difference to other retry packages is support for the `context`
-package. Retries are aborted immediately when the context is cancelled, e.g.
-when a timeout is reached or a client connection has been closed. [The
-documentation](https://godoc.org/github.com/octo/retry) has examples
+Support for the `context` is the main feature setting this `retry` package
+apart.
+Contexts are Go's idiomatic way to make a call with a deadline and to cancel
+ongoing calls early. Refer to [Go Concurrency Patterns:
+Context](https://blog.golang.org/context) for more information on contexts.
+The `Do()` function takes a `context.Context` as its first argument and returns
+immediately when the context is cancelled, for example when a timeout is reached
+or when a client connection has been closed. The context is also passed to the
+callback so the callback can implement the concurrency pattern, too.
+[The documentation](https://godoc.org/github.com/octo/retry) has examples
 demonstrating how the `retry` and `context` packages interact.
+
+The ability to abort retries is another differentiator.
+The `retry` package allows to cancel retries on permanent errors, for example
+HTTP 4xx errors and invalid network addresses.
+The retried code can signal a permanent failure by wrapping the error with
+[`Abort`](https://godoc.org/github.com/octo/retry#Abort) or by returning an
+error implementing the [`Error`](https://godoc.org/github.com/octo/retry#Error)
+interface. The `Error` interface is a subset of `net.Error`, i.e. permanent
+failures reported by the `net` package are automatically detected.
 
 ## Example
 
