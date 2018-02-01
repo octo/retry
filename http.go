@@ -8,13 +8,13 @@ import (
 	"net/http"
 )
 
-// Transport is an "net/http".RoundTripper that retries temporary error. The
-// zero value of Transport is a valid "net/http".RoundTripper that is using
+// Transport is a retrying "net/http".RoundTripper. The zero value of Transport
+// is a valid "net/http".RoundTripper that is using
 // "net/http".DefaultTransport.
 //
 // Custom options can be set by initializing Transport with NewTransport().
 //
-// Once consequence of using this transport is that HTTP 5xx errors will be
+// One consequence of using this transport is that HTTP 5xx errors will be
 // reported as errors. Other HTTP errors, most importantly HTTP 4xx errors, do
 // not result in an error.
 //
