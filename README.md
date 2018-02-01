@@ -28,6 +28,11 @@ error implementing the [`Error`](https://godoc.org/github.com/octo/retry#Error)
 interface. The `Error` interface is a subset of `net.Error`, i.e. permanent
 failures reported by the `net` package are automatically detected.
 
+A [`Transport`](https://godoc.org/github.com/octo/retry#Transport) type
+implements all the logic required for retrying HTTP requests. The `Transport`
+retries requests returning an HTTP 5xx status code, i.e. status codes signalling
+a server-side error, in addition to temporary errors.
+
 ## Example
 
 This example, which is taken from [the
