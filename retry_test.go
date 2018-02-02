@@ -82,7 +82,7 @@ func TestCancelInTimer(t *testing.T) {
 	defer cancel()
 
 	cb := func(ctx context.Context) error {
-		return fmt.Errorf("oh no!")
+		return fmt.Errorf("oh no")
 	}
 
 	start := time.Now()
