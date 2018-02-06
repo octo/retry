@@ -33,7 +33,9 @@ implements all the logic required for retrying HTTP requests. The `Transport`
 retries requests returning an HTTP 5xx status code, i.e. status codes signalling
 a server-side error, in addition to temporary errors.
 
-## Example
+## Examples
+
+### Cancel retries after timeout
 
 This example, which is taken from [the
 documentation](https://godoc.org/github.com/octo/retry), demonstrates how
@@ -53,6 +55,35 @@ cb := func(_ context.Context) error {
 if err := retry.Do(ctx, cb); err != nil {
 	log.Printf("cb() = %v", err)
 }
+```
+
+### Retry HTTP 5xx errors
+
+This example, which is taken from [the
+documentation](https://godoc.org/github.com/octo/retry), demonstrates how
+to retry an HTTP POST request until it succeeds or the 30 second timeout is
+reached.
+
+```go
+ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+defer cancel()
+
+c := &http.Client{
+	Transport: &Transport{},
+}
+
+req, err := http.NewRequest(http.MethodPost, "https://example.com/",
+	strings.NewReader(`{"example":true}`))
+if err != nil {
+	log.Fatalf("NewRequest() = %v", err)
+}
+res, err := c.Do(req.WithContext(ctx))
+if err != nil {
+	log.Printf("Do() = %v", err)
+	return
+}
+defer res.Body.Close()
+// ...
 ```
 
 ## Stability
