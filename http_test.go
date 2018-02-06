@@ -1,6 +1,7 @@
 package retry
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io/ioutil"
@@ -8,6 +9,7 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 )
 
 type testTransport struct {
@@ -88,17 +90,45 @@ func ExampleTransport() {
 		Transport: &Transport{},
 	}
 
+	// Caveat: there is no specific context associated with this request.
+	// The net/http package uses the background context in that case.
+	// That means that this request will be retried indefinitely until is succeeds.
 	res, err := c.Get("http://example.com/")
 	if err != nil {
 		log.Fatal(err)
 	}
+	defer res.Body.Close()
 
 	if res.StatusCode >= 500 && res.StatusCode < 600 {
 		panic("this does not happen. HTTP 5xx errors are reported as errors.")
 	}
 
-	if res.StatusCode >= 400 && res.StatusCode < 500 {
-		log.Fatalf("user error: %s", res.Status)
+	// use "res"
+}
+
+func ExampleTransport_withTimeout() {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	c := &http.Client{
+		Transport: &Transport{},
 	}
 
+	// The context needs to be added to the request via http.Request.WithContext().
+	// The net/http package defaults to using the background context, which is never cancelled.
+	// That's why NewRequest()/Do() is used here instead of the more
+	// convenient Get(), Head() and Post() short-hands.
+	req, err := http.NewRequest(http.MethodPost, "https://example.com/",
+		strings.NewReader(`{"example":true}`))
+	if err != nil {
+		log.Fatalf("NewRequest() = %v", err)
+	}
+	res, err := c.Do(req.WithContext(ctx))
+	if err != nil {
+		log.Printf("Do() = %v", err)
+		return
+	}
+	defer res.Body.Close()
+
+	// use "res"
 }

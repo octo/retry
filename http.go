@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"io"
 	"io/ioutil"
 	"net/http"
 )
@@ -17,6 +18,15 @@ import (
 // One consequence of using this transport is that HTTP 5xx errors will be
 // reported as errors. Other HTTP errors, most importantly HTTP 4xx errors, do
 // not result in an error.
+//
+// Transport needs to be able to read the request body multiple times.
+// Depending on the provided Request.Body, this happens in one of two ways:
+//
+// • If Request.Body implements the io.Seeker interface, Body is rewound by
+// calling Seek().
+//
+// • Otherwise, Request.Body is copied into an internal buffer, which consumes
+// additional memory.
 //
 // Use "net/http".Request.WithContext() to pass a context to Do(). By default,
 // the request is associated with the background context.
@@ -57,14 +67,18 @@ func checkResponse(res *http.Response, err error) error {
 
 // RoundTrip implements a retrying "net/http".RoundTripper.
 func (t Transport) RoundTrip(req *http.Request) (*http.Response, error) {
-	var body []byte
+	var body io.ReadSeeker
 	if req.Body != nil {
-		data, err := ioutil.ReadAll(req.Body)
-		if err != nil {
-			return nil, err
+		defer req.Body.Close()
+		if rs, ok := req.Body.(io.ReadSeeker); ok {
+			body = rs
+		} else {
+			data, err := ioutil.ReadAll(req.Body)
+			if err != nil {
+				return nil, err
+			}
+			body = bytes.NewReader(data)
 		}
-		body = data
-		req.Body.Close()
 	}
 
 	opts := t.opts
@@ -80,7 +94,8 @@ func (t Transport) RoundTrip(req *http.Request) (*http.Response, error) {
 		}
 
 		if body != nil {
-			req.Body = ioutil.NopCloser(bytes.NewReader(body))
+			body.Seek(0, io.SeekStart)
+			req.Body = ioutil.NopCloser(body)
 		}
 
 		res, err := rt.RoundTrip(req)
