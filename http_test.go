@@ -132,3 +132,19 @@ func ExampleTransport_withTimeout() {
 
 	// use "res"
 }
+
+func ExampleTransport_withOptions() {
+	c := &http.Client{
+		Transport: NewTransport(http.DefaultTransport, Attempts(3)),
+	}
+
+	// Caveat: there is no specific context associated with this request.
+	// The net/http package uses the background context, i.e. cancellation does not work.
+	res, err := c.Get("http://example.com/")
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer res.Body.Close()
+
+	// use "res"
+}
