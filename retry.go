@@ -7,8 +7,9 @@ import (
 )
 
 type internalOptions struct {
-	ExpBackoff
 	Attempts
+	ExpBackoff
+	Timeout
 }
 
 // Option is an option for Do().
@@ -41,6 +42,19 @@ type Attempts int
 
 func (opt Attempts) apply(opts *internalOptions) {
 	opts.Attempts = opt
+}
+
+// Timeout specifies the timeout for each individual attempt. When specified,
+// the context passed to the callback is cancelled after this duration. When
+// the timeout expires, the callback should return as quickly as possible. The
+// retry logic continues without waiting for the callback to return, though, so
+// callbacks should be thread-safe.
+//
+// Implements the Option interface.
+type Timeout time.Duration
+
+func (opt Timeout) apply(opts *internalOptions) {
+	opts.Timeout = opt
 }
 
 // Error is an error type that controls retry behavior. If Temporary() returns
@@ -95,9 +109,13 @@ func do(ctx context.Context, cb func(context.Context) error, opts internalOption
 
 	var err error
 	for i := 0; Attempts(i) < opts.Attempts || opts.Attempts == 0; i++ {
-		go func() {
-			ch <- cb(ctx)
-		}()
+		go func(ctx context.Context) {
+			if opts.Timeout != 0 {
+				ch <- callWithTimeout(ctx, cb, opts.Timeout)
+			} else {
+				ch <- cb(ctx)
+			}
+		}(ctx)
 
 		select {
 		case <-ctx.Done():
@@ -130,4 +148,22 @@ func do(ctx context.Context, cb func(context.Context) error, opts internalOption
 	}
 
 	return err
+}
+
+func callWithTimeout(ctx context.Context, cb func(context.Context) error, timeout Timeout) error {
+	ctx, cancel := context.WithTimeout(ctx, time.Duration(timeout))
+	defer cancel()
+
+	ch := make(chan error)
+
+	go func(ctx context.Context) {
+		ch <- cb(ctx)
+	}(ctx)
+
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case err := <-ch:
+		return err
+	}
 }
