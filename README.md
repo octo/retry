@@ -4,8 +4,10 @@ Package **retry** implements a wrapper to retry failing function calls.
 
 ## About
 
-**retry** is a package for calling functions with temporary failures repeatedly
-until they succeed.
+**retry** is a package for calling functions repeatedly until they either
+succeed or the action is cancelled, for example due to a timeout. Retrying
+operations is a common strategy to deal with temporary failures in distributed
+systems, for example when using Remote Procedure Calls (RPCs).
 
 Support for the `context` is the main feature setting this `retry` package
 apart.
