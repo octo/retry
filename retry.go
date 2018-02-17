@@ -3,12 +3,17 @@ package retry
 
 import (
 	"context"
+	"math"
 	"time"
 )
 
+type backoff interface {
+	delay(attempt int) time.Duration
+}
+
 type internalOptions struct {
 	Attempts
-	ExpBackoff
+	backoff
 	Timeout
 }
 
@@ -30,7 +35,18 @@ type ExpBackoff struct {
 }
 
 func (opt ExpBackoff) apply(opts *internalOptions) {
-	opts.ExpBackoff = opt
+	opts.backoff = opt
+}
+
+func (b ExpBackoff) delay(attempt int) time.Duration {
+	d := time.Duration(float64(b.Base) * math.Pow(b.Factor, float64(attempt)))
+
+	if d < b.Base {
+		return b.Base
+	} else if d > b.Max {
+		return b.Max
+	}
+	return d
 }
 
 // Attempts sets the number of calls made to the callback, i.e. the call is
@@ -89,7 +105,7 @@ func Abort(err error) Error {
 // was passed in opts.
 func Do(ctx context.Context, cb func(context.Context) error, opts ...Option) error {
 	intOpts := internalOptions{
-		ExpBackoff: ExpBackoff{
+		backoff: ExpBackoff{
 			Base:   100 * time.Millisecond,
 			Max:    2 * time.Second,
 			Factor: 2.0,
@@ -104,7 +120,6 @@ func Do(ctx context.Context, cb func(context.Context) error, opts ...Option) err
 }
 
 func do(ctx context.Context, cb func(context.Context) error, opts internalOptions) error {
-	delay := opts.ExpBackoff.Base
 	ch := make(chan error)
 
 	var err error
@@ -132,6 +147,7 @@ func do(ctx context.Context, cb func(context.Context) error, opts internalOption
 			}
 		}
 
+		delay := opts.backoff.delay(i)
 		ticker := time.NewTicker(delay)
 		select {
 		case <-ctx.Done():
@@ -139,11 +155,6 @@ func do(ctx context.Context, cb func(context.Context) error, opts internalOption
 			return ctx.Err()
 		case <-ticker.C:
 			ticker.Stop()
-		}
-
-		delay = time.Duration(float64(delay) * opts.ExpBackoff.Factor)
-		if delay > opts.ExpBackoff.Max {
-			delay = opts.ExpBackoff.Max
 		}
 	}
 
