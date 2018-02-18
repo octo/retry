@@ -14,6 +14,7 @@ type backoff interface {
 type internalOptions struct {
 	Attempts
 	backoff
+	Jitter
 	Timeout
 }
 
@@ -39,8 +40,9 @@ func (opt ExpBackoff) apply(opts *internalOptions) {
 }
 
 func (b ExpBackoff) delay(attempt int) time.Duration {
-	d := time.Duration(float64(b.Base) * math.Pow(b.Factor, float64(attempt)))
+	f := float64(b.Base) * math.Pow(b.Factor, float64(attempt))
 
+	d := time.Duration(f)
 	if d < b.Base {
 		return b.Base
 	} else if d > b.Max {
@@ -100,9 +102,13 @@ func Abort(err error) Error {
 // error), execution is paused for an exponentially increasing time. Execution
 // can be cancelled at any time by cancelling the context.
 //
-// By default, this function behaves as if
-//     ExpBackoff(100 * time.Millisecond, 2 * time.Second)
-// was passed in opts.
+// By default, this function behaves as if the following options were passed:
+//   ExpBackoff{
+//     Base:   100 * time.Millisecond,
+//     Max:    2 * time.Second,
+//     Factor: 2.0,
+//   },
+//   FullJitter,
 func Do(ctx context.Context, cb func(context.Context) error, opts ...Option) error {
 	intOpts := internalOptions{
 		backoff: ExpBackoff{
@@ -110,6 +116,7 @@ func Do(ctx context.Context, cb func(context.Context) error, opts ...Option) err
 			Max:    2 * time.Second,
 			Factor: 2.0,
 		},
+		Jitter: FullJitter,
 	}
 
 	for _, o := range opts {
@@ -147,7 +154,9 @@ func do(ctx context.Context, cb func(context.Context) error, opts internalOption
 			}
 		}
 
-		delay := opts.backoff.delay(i)
+		delay := opts.delay(i)
+		delay = opts.jitter(delay)
+
 		ticker := time.NewTicker(delay)
 		select {
 		case <-ctx.Done():

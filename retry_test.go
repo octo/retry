@@ -37,7 +37,7 @@ func TestDo(t *testing.T) {
 		return fmt.Errorf("n=%d", n)
 	}
 
-	if err := Do(ctx, cb); err != nil {
+	if err := Do(ctx, cb, Jitter(-1)); err != nil {
 		t.Errorf("Do() = %v", err)
 	}
 
