@@ -37,7 +37,7 @@ func TestDo(t *testing.T) {
 		return fmt.Errorf("n=%d", n)
 	}
 
-	if err := Do(ctx, cb, Jitter(-1)); err != nil {
+	if err := Do(ctx, cb, WithoutJitter); err != nil {
 		t.Errorf("Do() = %v", err)
 	}
 
@@ -66,7 +66,7 @@ func TestCancelInCallback(t *testing.T) {
 	}
 
 	start := time.Now()
-	if err := Do(ctx, cb); err != context.DeadlineExceeded {
+	if err := Do(ctx, cb, WithoutJitter); err != context.DeadlineExceeded {
 		t.Errorf("Do() = %v, want %v", err, context.DeadlineExceeded)
 	}
 	got := time.Since(start)
@@ -86,7 +86,7 @@ func TestCancelInTimer(t *testing.T) {
 	}
 
 	start := time.Now()
-	if err := Do(ctx, cb); err != context.DeadlineExceeded {
+	if err := Do(ctx, cb, WithoutJitter); err != context.DeadlineExceeded {
 		t.Errorf("Do() = %v, want %v", err, context.DeadlineExceeded)
 	}
 	got := time.Since(start)
@@ -110,7 +110,7 @@ func TestAbort(t *testing.T) {
 		return Abort(err)
 	}
 
-	if err := Do(ctx, cb); err == nil || err.Error() != "n = 2" {
+	if err := Do(ctx, cb, WithoutJitter); err == nil || err.Error() != "n = 2" {
 		t.Errorf("Do() = %v, want %v", err, fmt.Errorf("n = %d", 2))
 	}
 }
