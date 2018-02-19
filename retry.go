@@ -3,6 +3,7 @@ package retry
 
 import (
 	"context"
+	"errors"
 	"math"
 	"time"
 )
@@ -14,6 +15,7 @@ type backoff interface {
 type internalOptions struct {
 	Attempts
 	backoff
+	budget *Budget
 	Jitter
 	Timeout
 }
@@ -135,6 +137,12 @@ func do(ctx context.Context, cb func(context.Context) error, opts internalOption
 
 	var err error
 	for i := 0; Attempts(i) < opts.Attempts || opts.Attempts == 0; i++ {
+		if i != 0 {
+			if !opts.budget.check() {
+				return errors.New("retry budget exhausted")
+			}
+		}
+
 		go func(ctx context.Context) {
 			if opts.Timeout != 0 {
 				ch <- callWithTimeout(ctx, cb, opts.Timeout)
