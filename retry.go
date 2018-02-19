@@ -55,6 +55,8 @@ func (b ExpBackoff) delay(attempt int) time.Duration {
 // attempted at most n times. If all calls fail, the error of the last call is
 // returned by Do().
 //
+// Special case: the zero value retries indefinitely.
+//
 // Implements the Option interface.
 type Attempts int
 
@@ -103,6 +105,7 @@ func Abort(err error) Error {
 // can be cancelled at any time by cancelling the context.
 //
 // By default, this function behaves as if the following options were passed:
+//   Attempts(4),
 //   ExpBackoff{
 //     Base:   100 * time.Millisecond,
 //     Max:    2 * time.Second,
@@ -111,6 +114,7 @@ func Abort(err error) Error {
 //   FullJitter,
 func Do(ctx context.Context, cb func(context.Context) error, opts ...Option) error {
 	intOpts := internalOptions{
+		Attempts: Attempts(4),
 		backoff: ExpBackoff{
 			Base:   100 * time.Millisecond,
 			Max:    2 * time.Second,
