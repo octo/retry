@@ -16,8 +16,12 @@ import (
 // Custom options can be set by initializing Transport with NewTransport().
 //
 // One consequence of using this transport is that HTTP 5xx errors will be
-// reported as errors. Other HTTP errors, most importantly HTTP 4xx errors, do
-// not result in an error.
+// reported as errors. HTTP 4xx errors are generally not retried (and therefore
+// don't result in an error being returned), with two exceptions:
+//
+// • The 429 "Too Many Requests" status code.
+//
+// • When the response has a 4xx status code and the "Retry-After" header.
 //
 // Transport needs to be able to read the request body multiple times.
 // Depending on the provided Request.Body, this happens in one of two ways:
@@ -60,6 +64,15 @@ func checkResponse(res *http.Response, err error) error {
 
 	if res.StatusCode >= 500 && res.StatusCode < 600 {
 		return errors.New(res.Status)
+	}
+
+	if res.StatusCode >= 400 && res.StatusCode < 500 {
+		if res.StatusCode == http.StatusTooManyRequests {
+			return errors.New(res.Status)
+		}
+		if _, ok := res.Header["Retry-After"]; ok {
+			return errors.New(res.Status)
+		}
 	}
 
 	return nil
