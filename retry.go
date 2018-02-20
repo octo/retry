@@ -100,7 +100,7 @@ func Abort(err error) Error {
 	return permanentError{err}
 }
 
-// Do repeatedly calls cb until is succeeds. After cb fails (returns a non-nil
+// Do repeatedly calls cb until it succeeds. After cb fails (returns a non-nil
 // error), execution is paused for an exponentially increasing time. Execution
 // can be cancelled at any time by cancelling the context.
 //

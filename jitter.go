@@ -26,12 +26,12 @@ import (
 // Implements the Option interface.
 type Jitter float64
 
-// EqualJitter produces random the delays in the [max/2,max) range.
+// EqualJitter produces random delays in the [max/2,max) range.
 // The name refers to the fact that the obligatory delay and the random range
 // are of equal length.
 const EqualJitter Jitter = 0.5
 
-// FullJitter produces random the delays in the [0,max) range.
+// FullJitter produces random delays in the [0,max) range.
 // This is the recommanded instance and the default behavior.
 const FullJitter Jitter = 1.0
 
