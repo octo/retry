@@ -8,9 +8,11 @@ import (
 // Jitter is a randomization of the backoff delay. Randomizing the delay avoids
 // thundering herd problems, for example when using optimistic locking.
 //
-// Jitter is a floating point number in the (0-1] range that controls the
-// weight of the random number. Assuming that the current backoff delay is
-// 100ms, Jitter 1.0 means the result is in the range [0,100) ms, Jitter 0.2
+// This generic jitter implementation has two components: a fixed delay
+// (calculated by ExpBackoff) and a random component in the range [0,delay).
+// The Jitter type is a floating point number in the (0-1] range that controls
+// the ratio of the random component. Assuming that the current backoff delay
+// is 100ms, Jitter 1.0 means the result is in the range [0,100) ms, Jitter 0.2
 // means the result is in the range [80,100) ms.
 //
 // The following formula is used:
@@ -35,7 +37,7 @@ const EqualJitter Jitter = 0.5
 // This is the recommanded instance and the default behavior.
 const FullJitter Jitter = 1.0
 
-// WithoutJitter deactivates jitter and always returns max.
+// WithoutJitter deactivates jitter and always returns delay unchanged.
 const WithoutJitter Jitter = -1.0
 
 func (j Jitter) apply(o *internalOptions) {
