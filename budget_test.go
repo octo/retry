@@ -77,3 +77,72 @@ func TestBudget(t *testing.T) {
 		t.Errorf("rpcCalls = %d, want 110", rpcCalls)
 	}
 }
+
+func TestMovingRate(t *testing.T) {
+	cases := []struct {
+		calls []int
+		want  float64
+	}{
+		{
+			calls: []int{5},
+			want:  0.0,
+		},
+		{
+			calls: []int{5, 3},
+			want:  5.0,
+		},
+		{
+			calls: []int{5, 3, 1},
+			want:  4.0,
+		},
+		{
+			calls: []int{2, 2, 2, 2, 2, 2, 2, 2, 2, 2},
+			want:  2.0,
+		},
+		{
+			calls: []int{
+				2, 0, 2, 0, 2, 0, 2, 0, 2, 0, // history
+				100, // staging
+			},
+			want: 1.0,
+		},
+		{
+			calls: []int{
+				1000000,                      // old
+				2, 2, 2, 2, 2, 2, 2, 2, 2, 2, // history
+				1000000, // staging
+			},
+			want: 2.0,
+		},
+		{
+			calls: []int{
+				2, 2, 2, 2, 2, // old
+				1, 1, 1, 1, 1, 0, 0, 0, 0, 0, // history
+				0, // ts=15 staging
+			},
+			want: 0.5,
+		},
+	}
+
+	for _, c := range cases {
+		mr := &movingRate{
+			historySize: 10,
+		}
+
+		var tm time.Time
+		for i, n := range c.calls {
+			tm = time.Date(2018, time.February, 22, 22, 24, 53, 0, time.UTC).Add(time.Duration(i) * time.Second)
+			for j := 0; j < n; j++ {
+				mr.Add(tm, 1)
+			}
+		}
+
+		t.Logf("BEFORE mr = %+v", mr)
+
+		if got := mr.Rate(tm); got != c.want {
+			t.Errorf("mr.Rate(%v) = %g, want %g", tm, got, c.want)
+		}
+
+		t.Logf("AFTER  mr = %+v", mr)
+	}
+}
