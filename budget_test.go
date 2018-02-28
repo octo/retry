@@ -95,30 +95,38 @@ func TestMovingRate(t *testing.T) {
 			wantSecond: 1.2,
 		},
 		{
-			calls:      []int{5, 3, 1},
-			wantCount:  9,
+			calls:      []int{5, 5, 1},
+			wantCount:  11,
 			wantSecond: 2.2,
 		},
 		{
-			calls:      []int{2, 2, 2, 2, 2, 2, 2, 2, 2, 2},
-			wantCount:  20,
+			calls:      []int{5, 5, 5, 5, 5, 5, 5, 5, 5, 1},
+			wantCount:  9*5 + 1,
 			wantSecond: 9.2,
 		},
 		{
 			calls: []int{
-				1000000, // old
+				5, // partial value
+				5, 5, 5, 5, 5, 5, 5, 5, 5, 1},
+			wantCount:  5*.8 + 9*5 + 1,
+			wantSecond: 10,
+		},
+		{
+			calls: []int{
+				1000000, // partial value
 				2, 2, 2, 2, 2, 2, 2, 2, 2, 2,
 			},
-			wantCount:  20,
-			wantSecond: 9.2,
+			wantCount:  1000000*.8 + 20,
+			wantSecond: 10.0,
 		},
 		{
 			calls: []int{
-				2, 2, 2, 2, 2, // old
-				1, 1, 1, 1, 0, 0, 0, 0, 0, 1, // history
+				2, 2, 2, 2, // old
+				5, // partial
+				1, 1, 1, 1, 0, 0, 0, 0, 0, 1,
 			},
-			wantCount:  5,
-			wantSecond: 9.2,
+			wantCount:  5*.8 + 5,
+			wantSecond: 10.0,
 		},
 	}
 

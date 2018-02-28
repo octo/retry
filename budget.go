@@ -79,9 +79,22 @@ type movingRate struct {
 }
 
 func (mr *movingRate) count() float64 {
-	var s float64
-	for _, c := range mr.counts {
-		s += float64(c)
+	// history is not yet fully initialized
+	if len(mr.counts) <= mr.BucketNum {
+		var s float64
+		for _, c := range mr.counts {
+			s += float64(c)
+		}
+		return s
+	}
+
+	oldestFraction := 1.0 -
+		float64(mr.lastUpdate.Sub(timeRoundDown(mr.lastUpdate, mr.BucketLength)))/
+			float64(mr.BucketLength)
+
+	s := oldestFraction * float64(mr.counts[0])
+	for i := 1; i < len(mr.counts); i++ {
+		s += float64(mr.counts[i])
 	}
 
 	return s
@@ -92,21 +105,28 @@ func (mr *movingRate) second() float64 {
 		return 0.0
 	}
 
-	d := time.Duration(len(mr.counts)-1) * mr.BucketLength
-	d += mr.lastUpdate.Sub(timeRoundDown(mr.lastUpdate, mr.BucketLength))
+	// history is not yet fully initialized
+	if len(mr.counts) <= mr.BucketNum {
+		d := time.Duration(len(mr.counts)-1) * mr.BucketLength
+		d += mr.lastUpdate.Sub(timeRoundDown(mr.lastUpdate, mr.BucketLength))
+		return d.Seconds()
+	}
 
+	d := time.Duration(mr.BucketNum) * mr.BucketLength
 	return d.Seconds()
 }
 
 func (mr *movingRate) shift(n int) {
-	if n > mr.BucketNum {
-		n = mr.BucketNum
+	if n > mr.BucketNum+1 {
+		n = mr.BucketNum + 1
 	}
 
 	zero := make([]int, n)
 	mr.counts = append(mr.counts, zero...)
 
-	if del := len(mr.counts) - mr.BucketNum; del > 0 {
+	// we actually keep BucketNum+1 buckets -- the newest and oldest
+	// buckets are partially evaluated so the window length stays constant.
+	if del := len(mr.counts) - (mr.BucketNum + 1); del > 0 {
 		mr.counts = mr.counts[del:]
 	}
 
