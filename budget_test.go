@@ -80,58 +80,57 @@ func TestBudget(t *testing.T) {
 
 func TestMovingRate(t *testing.T) {
 	cases := []struct {
-		calls []int
-		want  float64
+		calls      []int
+		wantCount  float64
+		wantSecond float64
 	}{
 		{
-			calls: []int{5},
-			want:  0.0,
+			calls:      []int{5},
+			wantCount:  5,
+			wantSecond: 0.2,
 		},
 		{
-			calls: []int{5, 3},
-			want:  5.0,
+			calls:      []int{5, 3},
+			wantCount:  8,
+			wantSecond: 1.2,
 		},
 		{
-			calls: []int{5, 3, 1},
-			want:  4.0,
+			calls:      []int{5, 3, 1},
+			wantCount:  9,
+			wantSecond: 2.2,
 		},
 		{
-			calls: []int{2, 2, 2, 2, 2, 2, 2, 2, 2, 2},
-			want:  2.0,
-		},
-		{
-			calls: []int{
-				2, 0, 2, 0, 2, 0, 2, 0, 2, 0, // history
-				100, // staging
-			},
-			want: 1.0,
+			calls:      []int{2, 2, 2, 2, 2, 2, 2, 2, 2, 2},
+			wantCount:  20,
+			wantSecond: 9.2,
 		},
 		{
 			calls: []int{
-				1000000,                      // old
-				2, 2, 2, 2, 2, 2, 2, 2, 2, 2, // history
-				1000000, // staging
+				1000000, // old
+				2, 2, 2, 2, 2, 2, 2, 2, 2, 2,
 			},
-			want: 2.0,
+			wantCount:  20,
+			wantSecond: 9.2,
 		},
 		{
 			calls: []int{
 				2, 2, 2, 2, 2, // old
-				1, 1, 1, 1, 1, 0, 0, 0, 0, 0, // history
-				0, // ts=15 staging
+				1, 1, 1, 1, 0, 0, 0, 0, 0, 1, // history
 			},
-			want: 0.5,
+			wantCount:  5,
+			wantSecond: 9.2,
 		},
 	}
 
 	for _, c := range cases {
 		mr := &movingRate{
-			historySize: 10,
+			BucketLength: time.Second,
+			BucketNum:    10,
 		}
 
-		var tm time.Time
-		for i, n := range c.calls {
-			tm = time.Date(2018, time.February, 22, 22, 24, 53, 0, time.UTC).Add(time.Duration(i) * time.Second)
+		tm := time.Date(2018, time.February, 22, 22, 24, 53, 200000000, time.UTC)
+		for _, n := range c.calls {
+			tm = tm.Add(mr.BucketLength)
 			for j := 0; j < n; j++ {
 				mr.Add(tm, 1)
 			}
@@ -139,8 +138,16 @@ func TestMovingRate(t *testing.T) {
 
 		t.Logf("BEFORE mr = %+v", mr)
 
-		if got := mr.Rate(tm); got != c.want {
-			t.Errorf("mr.Rate(%v) = %g, want %g", tm, got, c.want)
+		if got, want := mr.count(), c.wantCount; got != want {
+			t.Errorf("mr.count() = %g, want %g", got, want)
+		}
+
+		if got, want := mr.second(), c.wantSecond; got != want {
+			t.Errorf("mr.second() = %g, want %g", got, want)
+		}
+
+		if got, want := mr.Rate(tm), c.wantCount/c.wantSecond; got != want {
+			t.Errorf("mr.Rate(%v) = %g, want %g (= %g/%g)", tm, got, want, c.wantCount, c.wantSecond)
 		}
 
 		t.Logf("AFTER  mr = %+v", mr)

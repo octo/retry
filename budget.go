@@ -1,6 +1,7 @@
 package retry
 
 import (
+	"fmt"
 	"math"
 	"sync"
 	"time"
@@ -60,115 +61,103 @@ func (b *Budget) check() bool {
 	return true
 }
 
+func timeRoundDown(t time.Time, d time.Duration) time.Time {
+	rt := t.Round(d)
+	if rt.After(t) {
+		rt = rt.Add(-d)
+	}
+
+	return rt
+}
+
 type movingRate struct {
-	historyCounts    []int
-	historyTimestamp int64
-	historySize      int
+	BucketLength time.Duration
+	BucketNum    int
 
-	stagingCount     int
-	stagingTimestamp int64
+	counts     []int
+	lastUpdate time.Time
 }
 
-func newMovingRate(size int) *movingRate {
-	return &movingRate{
-		historySize: size,
-	}
-}
-
-// commitToHistory appends the provided counts to historyCounts.
-// If the number of elements in historyCounts exceeds historySize, the oldest entries are purged.
-// historyTimestamp is advanced by len(count).
-func (mr *movingRate) commitToHistory(count ...int) {
-	mr.historyCounts = append(mr.historyCounts, count...)
-	if len(mr.historyCounts) > mr.historySize {
-		idx := len(mr.historyCounts) - mr.historySize
-		mr.historyCounts = mr.historyCounts[idx:]
-	}
-
-	mr.historyTimestamp += int64(len(count))
-}
-
-// clearHistory clears the history and updates historyTimestamp.
-func (mr *movingRate) clearHistory(ts int64) {
-	mr.historyCounts = []int{}
-	mr.historyTimestamp = ts
-}
-
-// forwardHistory ensures that the newest element in historyCounts represents the timestamp ts.
-// If ts is much larger than historyTimestamp (i.e. all elements would be
-// zero), then historyCounts is reset to an empty slice.
-func (mr *movingRate) forwardHistory(ts int64) {
-	if ts <= mr.historyTimestamp {
-		return
-	}
-
-	if mr.historyTimestamp+int64(mr.historySize) <= ts {
-		mr.clearHistory(ts)
-		return
-	}
-
-	zero := make([]int, ts-mr.historyTimestamp)
-	mr.commitToHistory(zero...)
-}
-
-// persistStaging appends stagingCount to historyCounts.
-func (mr *movingRate) persistStaging() {
-	if mr.stagingTimestamp == 0 {
-		return
-	}
-
-	mr.forwardHistory(mr.stagingTimestamp - 1)
-	mr.commitToHistory(mr.stagingCount)
-
-	mr.stagingCount = 0
-	mr.stagingTimestamp++
-}
-
-// forwardStaging updates all internal state so that stagingTimestamp == ts and
-// historyTimestamp == ts-1.
-func (mr *movingRate) forwardStaging(ts int64) {
-	if ts <= mr.stagingTimestamp {
-		return
-	}
-
-	mr.persistStaging()
-	mr.forwardHistory(ts - 1)
-	mr.stagingTimestamp = ts
-}
-
-func (mr *movingRate) sum() float64 {
+func (mr *movingRate) count() float64 {
 	var s float64
-	for _, c := range mr.historyCounts {
+	for _, c := range mr.counts {
 		s += float64(c)
 	}
 
 	return s
 }
 
-func (mr *movingRate) num() float64 {
-	return float64(len(mr.historyCounts))
-}
-
-func (mr *movingRate) Rate(t time.Time) float64 {
-	if t.Unix() < mr.stagingTimestamp {
-		return math.NaN()
-	}
-
-	mr.forwardStaging(t.Unix())
-
-	if len(mr.historyCounts) == 0 {
+func (mr *movingRate) second() float64 {
+	if len(mr.counts) == 0 {
 		return 0.0
 	}
 
-	return mr.sum() / mr.num()
+	d := time.Duration(len(mr.counts)-1) * mr.BucketLength
+	d += mr.lastUpdate.Sub(timeRoundDown(mr.lastUpdate, mr.BucketLength))
+
+	return d.Seconds()
 }
 
-func (mr *movingRate) Add(t time.Time, n int) {
-	if t.Unix() < mr.stagingTimestamp {
+func (mr *movingRate) shift(n int) {
+	if n > mr.BucketNum {
+		n = mr.BucketNum
+	}
+
+	zero := make([]int, n)
+	mr.counts = append(mr.counts, zero...)
+
+	if del := len(mr.counts) - mr.BucketNum; del > 0 {
+		mr.counts = mr.counts[del:]
+	}
+
+	mr.lastUpdate = timeRoundDown(mr.lastUpdate, mr.BucketLength).Add(time.Duration(n) * mr.BucketLength)
+
+}
+
+func (mr *movingRate) forward(t time.Time) {
+	defer func() {
+		mr.lastUpdate = t
+	}()
+
+	if mr.lastUpdate.IsZero() {
+		mr.counts = []int{0}
 		return
 	}
 
-	mr.forwardStaging(t.Unix())
+	rt := timeRoundDown(t, mr.BucketLength)
+	if !rt.After(mr.lastUpdate) {
+		return
+	}
 
-	mr.stagingCount += n
+	n := int(rt.Sub(timeRoundDown(mr.lastUpdate, mr.BucketLength)) / mr.BucketLength)
+	if n <= 0 {
+		panic(fmt.Sprintf("assertion failure: n = %d, want >0; rt = %v, mr.lastUpdate = %v, mr.BucketLength = %v",
+			n, rt, mr.lastUpdate, mr.BucketLength))
+	}
+
+	mr.shift(n)
+}
+
+func (mr *movingRate) Add(t time.Time, n int) {
+	if t.Before(mr.lastUpdate) {
+		return
+	}
+
+	mr.forward(t)
+	mr.counts[len(mr.counts)-1] += n
+}
+
+func (mr *movingRate) Rate(t time.Time) float64 {
+	if t.Before(mr.lastUpdate) {
+		return math.NaN()
+	}
+
+	mr.forward(t)
+
+	cnt := mr.count()
+	if cnt == 0.0 {
+		return 0.0
+	}
+
+	return cnt / mr.second()
 }
