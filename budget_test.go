@@ -43,7 +43,7 @@ func TestBudget(t *testing.T) {
 	ctx := context.Background()
 
 	b := &Budget{
-		Rate:  10,
+		Rate:  1.0,
 		Ratio: 0.1,
 	}
 
@@ -55,7 +55,7 @@ func TestBudget(t *testing.T) {
 
 		rpcCalls++
 
-		return errors.New("permanent failure")
+		return errors.New("temporary failure")
 	}
 
 	wg := &sync.WaitGroup{}
