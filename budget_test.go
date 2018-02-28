@@ -13,24 +13,24 @@ func ExampleBudget() {
 	ctx := context.Background()
 
 	// fooRetryBudget is a global variable holding the state of foo's retry budget.
+	// You should have one retry budget per backend service.
 	var fooRetryBudget = Budget{
 		Rate:  1.0,
 		Ratio: 0.1,
 	}
 
-	// failingRPC is a fake RPC call simulating a permanent backend
-	// failure.
+	// failingRPC is a fake RPC call simulating a temporary backend failure.
 	failingRPC := func(_ context.Context) error {
-		return errors.New("permanent failure")
+		return errors.New("temporary failure")
 	}
 
 	// Simulate 100 concurrent requests. Each request is tried initially,
-	// but only 10 requests are retried, i.e. there will be 110 calls of
-	// failingRPC in total.
+	// but only ~10 requests are retried, i.e. there will be approximately
+	// 110 calls of failingRPC in total.
 	for i := 0; i < 100; i++ {
 		go func() {
 			// Pass a pointer to fooRetryBudget to all Do() calls,
-			// i.e. all Do() calls receive a the same Budget{}.
+			// i.e. all Do() calls receive a pointer to the same Budget{}.
 			// This allows state to be shared between Do() calls.
 			if err := Do(ctx, failingRPC, &fooRetryBudget); err != nil {
 				log.Println(err)
