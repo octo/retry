@@ -185,11 +185,5 @@ func (mr *movingRate) Rate(t time.Time) float64 {
 	}
 
 	mr.forward(t)
-
-	cnt := mr.count()
-	if cnt == 0.0 {
-		return 0.0
-	}
-
-	return cnt / mr.second()
+	return mr.count() / mr.second()
 }
