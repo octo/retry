@@ -9,8 +9,10 @@ succeed or the action is cancelled, for example due to a timeout. Retrying
 operations is a common strategy to deal with temporary failures in distributed
 systems, for example when using Remote Procedure Calls (RPCs).
 
-Support for the `context` is the main feature setting this `retry` package
-apart.
+### context package
+
+Support for the `context` package is one of the main features setting this
+`retry` package apart.
 Contexts are Go's idiomatic way to make a call with a deadline and to cancel
 ongoing calls early. Refer to [Go Concurrency Patterns:
 Context](https://blog.golang.org/context) for more information on contexts.
@@ -21,6 +23,23 @@ callback so the callback can implement the concurrency pattern, too.
 [The documentation](https://godoc.org/github.com/octo/retry) has examples
 demonstrating how the `retry` and `context` packages interact.
 
+### SRE best practices
+
+Features and defaults in this package are heavily influenced by the [SRE
+book](https://landing.google.com/sre/book.html), particularly the chapters
+[Handling
+Overload](https://landing.google.com/sre/book/chapters/handling-overload.html)
+and [Addressing Cascading
+Failures](https://landing.google.com/sre/book/chapters/addressing-cascading-failures.html).
+By default this package uses
+[Jitter](https://godoc.org/github.com/octo/retry#Jitter) to evenly distribute
+retries over the retry period and limits the number of
+[Attempts](https://godoc.org/github.com/octo/retry#Attempts) per request. A
+[retry budget](https://godoc.org/github.com/octo/retry#Budget) optionally limits
+the number of retries sent to a backend to prevent overload.
+
+### Permanent failures
+
 The ability to abort retries is another differentiator.
 The `retry` package allows to cancel retries on permanent errors, for example
 HTTP 4xx errors and invalid network addresses.
@@ -29,6 +48,8 @@ The retried code can signal a permanent failure by wrapping the error with
 error implementing the [`Error`](https://godoc.org/github.com/octo/retry#Error)
 interface. The `Error` interface is a subset of `net.Error`, i.e. permanent
 failures reported by the `net` package are automatically detected.
+
+### HTTP transport
 
 A [`Transport`](https://godoc.org/github.com/octo/retry#Transport) type
 implements all the logic required for retrying HTTP requests. The `Transport`
