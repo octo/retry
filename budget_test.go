@@ -15,7 +15,7 @@ func ExampleBudget() {
 	// fooRetryBudget is a global variable holding the state of foo's retry budget.
 	var fooRetryBudget = Budget{
 		Rate:  1.0,
-		Burst: 10,
+		Ratio: 0.1,
 	}
 
 	// failingRPC is a fake RPC call simulating a permanent backend
@@ -43,8 +43,8 @@ func TestBudget(t *testing.T) {
 	ctx := context.Background()
 
 	b := &Budget{
-		Rate:  60,
-		Burst: 10,
+		Rate:  10,
+		Ratio: 0.1,
 	}
 
 	rpcCalls := 0
@@ -73,8 +73,10 @@ func TestBudget(t *testing.T) {
 	}
 
 	wg.Wait()
-	if rpcCalls != 110 {
-		t.Errorf("rpcCalls = %d, want 110", rpcCalls)
+
+	// 100 tries, 10% retries + some slack -> 115
+	if got, want := rpcCalls, 115; got > want {
+		t.Errorf("rpcCalls = %d, want <=%d", got, want)
 	}
 }
 
