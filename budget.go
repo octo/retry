@@ -13,9 +13,9 @@ import (
 // To add a retry budget for a specific service or backend, declare a Budget
 // variable that is shared by all Do() calls. See the example for a demonstration.
 //
-// Budget calculates the rate of retries and the rate of total calls over a
+// Budget calculates the rate of inital calls and the rate of retries over a
 // moving one minute window. If the rate of retries exceeds Budget.Rate and the
-// ratio of retries to total calls exceeds Budget.Ratio, then retries are
+// ratio of retries to new calls exceeds Budget.Ratio, then retries are
 // dropped. Initial attempts are never dropped.
 //
 // Implements the Option interface.
@@ -24,13 +24,13 @@ type Budget struct {
 	// If fewer retries are attempted than this rate, retries are never throttled.
 	Rate float64
 
-	// Ratio is the maximum ratio of retries to total calls.
-	// It is a number in the [0.0, 1.0] range.
+	// Ratio is the maximum ratio of retries to initial calls.
+	// It is a number in the [0.0, Attempts()] range.
 	Ratio float64
 
 	mu           sync.Mutex
+	initialCalls *movingRate
 	retriedCalls *movingRate
-	totalCalls   *movingRate
 }
 
 func (b *Budget) apply(opts *internalOptions) {
@@ -51,8 +51,8 @@ func (b *Budget) check(isRetry bool) bool {
 			BucketNum:    60,
 		}
 	}
-	if b.totalCalls == nil {
-		b.totalCalls = &movingRate{
+	if b.initialCalls == nil {
+		b.initialCalls = &movingRate{
 			BucketLength: time.Second,
 			BucketNum:    60,
 		}
@@ -61,18 +61,17 @@ func (b *Budget) check(isRetry bool) bool {
 	t := time.Now()
 
 	if !isRetry {
-		b.totalCalls.Add(t, 1)
+		b.initialCalls.Add(t, 1)
 		return true
 	}
 
-	totalRate := b.totalCalls.Rate(t)
+	initialRate := b.initialCalls.Rate(t)
 	retriedRate := b.retriedCalls.Rate(t)
-	if totalRate > b.Rate &&
-		retriedRate/totalRate > b.Ratio {
+	if initialRate > b.Rate &&
+		retriedRate/initialRate > b.Ratio {
 		return false
 	}
 
-	b.totalCalls.Add(t, 1)
 	b.retriedCalls.Add(t, 1)
 	return true
 }
