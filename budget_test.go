@@ -4,6 +4,9 @@ import (
 	"context"
 	"errors"
 	"log"
+	"math"
+	"math/rand"
+	"sort"
 	"sync"
 	"testing"
 	"time"
@@ -40,43 +43,63 @@ func ExampleBudget() {
 }
 
 func TestBudget(t *testing.T) {
-	ctx := context.Background()
+	t.Parallel()
 
-	b := &Budget{
-		Rate:  1.0,
+	var (
+		callsCount int
+		callsLock  sync.Mutex
+		updateTime time.Time
+		rates      []float64
+	)
+
+	rpcCall := func(ctx context.Context) error {
+		callsLock.Lock()
+		defer callsLock.Unlock()
+
+		callsCount++
+
+		now := time.Now()
+		if updateTime.IsZero() {
+			updateTime = now
+		} else if s := now.Sub(updateTime).Seconds(); s >= 0.1 {
+			rates = append(rates, float64(callsCount)/s)
+			callsCount = 0
+			updateTime = now
+		}
+
+		if rand.Float64() < 0.5 {
+			return errors.New("temporary error")
+		}
+
+		return nil
+	}
+
+	ctx := context.Background()
+	ticker := time.NewTicker(time.Second / 100)
+	wg := &sync.WaitGroup{}
+	budget := &Budget{
+		Rate:  0,
 		Ratio: 0.1,
 	}
 
-	rpcCalls := 0
-	rpcCallsLock := &sync.Mutex{}
-	failingRPC := func(_ context.Context) error {
-		rpcCallsLock.Lock()
-		defer rpcCallsLock.Unlock()
+	for i := 0; i < 200; i++ {
+		<-ticker.C
 
-		rpcCalls++
-
-		return errors.New("temporary failure")
-	}
-
-	wg := &sync.WaitGroup{}
-	for i := 0; i < 100; i++ {
 		wg.Add(1)
-		go func() {
+		go func(ctx context.Context) {
 			defer wg.Done()
-			Do(ctx, failingRPC, b,
-				ExpBackoff{
-					Base:   time.Millisecond,
-					Max:    8 * time.Millisecond,
-					Factor: 2.0,
-				})
-		}()
+			if err := Do(ctx, rpcCall, budget); err != nil {
+				// log.Printf("retry.Do() = %v", err)
+			}
+		}(ctx)
 	}
 
 	wg.Wait()
 
-	// 100 tries, 10% retries + some slack -> 112
-	if got, want := rpcCalls, 112; got > want {
-		t.Errorf("rpcCalls = %d, want <=%d", got, want)
+	sort.Float64s(rates)
+
+	if got, want := rates[len(rates)/2], 110.0; math.Abs(got-want) > 1.0 {
+		t.Errorf("got median rate %g, want %g", got, want)
 	}
 }
 
