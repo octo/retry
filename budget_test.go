@@ -74,8 +74,8 @@ func TestBudget(t *testing.T) {
 
 	wg.Wait()
 
-	// 100 tries, 10% retries + some slack -> 115
-	if got, want := rpcCalls, 115; got > want {
+	// 100 tries, 10% retries + some slack -> 112
+	if got, want := rpcCalls, 112; got > want {
 		t.Errorf("rpcCalls = %d, want <=%d", got, want)
 	}
 }
