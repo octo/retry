@@ -34,15 +34,6 @@ type Budget struct {
 }
 
 func (b *Budget) apply(opts *internalOptions) {
-	b.retriedCalls = &movingRate{
-		BucketLength: time.Second,
-		BucketNum:    60,
-	}
-	b.totalCalls = &movingRate{
-		BucketLength: time.Second,
-		BucketNum:    60,
-	}
-
 	opts.budget = b
 }
 
@@ -53,6 +44,19 @@ func (b *Budget) check(isRetry bool) bool {
 
 	b.mu.Lock()
 	defer b.mu.Unlock()
+
+	if b.retriedCalls == nil {
+		b.retriedCalls = &movingRate{
+			BucketLength: time.Second,
+			BucketNum:    60,
+		}
+	}
+	if b.totalCalls == nil {
+		b.totalCalls = &movingRate{
+			BucketLength: time.Second,
+			BucketNum:    60,
+		}
+	}
 
 	t := time.Now()
 
