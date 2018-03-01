@@ -21,41 +21,36 @@ func durationEqual(d0, d1 time.Duration) bool {
 	return diff < 10*time.Millisecond
 }
 
-func TestDo(t *testing.T) {
-	ctx := context.Background()
-	start := time.Now()
+func TestExpBackoffDelay(t *testing.T) {
+	t.Parallel()
 
-	n := 3
-	got := make([]time.Duration, 0, 4)
-	cb := func(_ context.Context) error {
-		got = append(got, time.Since(start))
-
-		if n == 0 {
-			return nil
-		}
-		n--
-		return fmt.Errorf("n=%d", n)
-	}
-
-	if err := Do(ctx, cb, WithoutJitter); err != nil {
-		t.Errorf("Do() = %v", err)
-	}
-
-	want := []time.Duration{
-		0 * time.Millisecond,
+	wants := []time.Duration{
 		100 * time.Millisecond,
-		300 * time.Millisecond,
-		700 * time.Millisecond,
+		200 * time.Millisecond,
+		400 * time.Millisecond,
+		800 * time.Millisecond,
+		1600 * time.Millisecond,
+		2000 * time.Millisecond,
+		2000 * time.Millisecond,
 	}
 
-	for i := range want {
-		if !durationEqual(got[i], want[i]) {
-			t.Errorf("got[%d] = %v, want[%d] = %v", i, got[i], i, want[i])
+	b := ExpBackoff{
+		Base:   100 * time.Millisecond,
+		Max:    2 * time.Second,
+		Factor: 2.0,
+	}
+
+	for i, want := range wants {
+		got := b.delay(i)
+		if got != want {
+			t.Errorf("ExpBackoff.delay(%d) = %v, want %v", i, got, want)
 		}
 	}
 }
 
 func TestCancelInCallback(t *testing.T) {
+	t.Parallel()
+
 	want := 500 * time.Millisecond
 	ctx, cancel := context.WithTimeout(context.Background(), want)
 	defer cancel()
@@ -77,6 +72,8 @@ func TestCancelInCallback(t *testing.T) {
 }
 
 func TestCancelInTimer(t *testing.T) {
+	t.Parallel()
+
 	want := 500 * time.Millisecond
 	ctx, cancel := context.WithTimeout(context.Background(), want)
 	defer cancel()
@@ -97,6 +94,8 @@ func TestCancelInTimer(t *testing.T) {
 }
 
 func TestAbort(t *testing.T) {
+	t.Parallel()
+
 	ctx := context.Background()
 	var n int
 
@@ -117,6 +116,8 @@ func TestAbort(t *testing.T) {
 
 // TestError ensures that net.Error is a superset of Error.
 func TestError(t *testing.T) {
+	t.Parallel()
+
 	// Give the net.Error interface a local name (by wrapping it in an
 	// otherwise empty interface) so that the compiler does not get
 	// confused by Error (the embedded type) and Error (the method required
