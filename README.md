@@ -9,19 +9,9 @@ succeed or the action is cancelled, for example due to a timeout. Retrying
 operations is a common strategy to deal with temporary failures in distributed
 systems, for example when using Remote Procedure Calls (RPCs).
 
-### context package
-
-Support for the `context` package is one of the main features setting this
-`retry` package apart.
-Contexts are Go's idiomatic way to make a call with a deadline and to cancel
-ongoing calls early. Refer to [Go Concurrency Patterns:
-Context](https://blog.golang.org/context) for more information on contexts.
-The `Do()` function takes a `context.Context` as its first argument and returns
-immediately when the context is cancelled, for example when a timeout is reached
-or when a client connection has been closed. The context is also passed to the
-callback so the callback can implement the concurrency pattern, too.
-[The documentation](https://godoc.org/github.com/octo/retry) has examples
-demonstrating how the `retry` and `context` packages interact.
+This package provides all features needed in a large scale distributed
+environment and does so with a small and idiomatic API surface.
+Highlights are:
 
 ### SRE best practices
 
@@ -32,22 +22,38 @@ Overload](https://landing.google.com/sre/book/chapters/handling-overload.html)
 and [Addressing Cascading
 Failures](https://landing.google.com/sre/book/chapters/addressing-cascading-failures.html).
 By default this package uses
-[Jitter](https://godoc.org/github.com/octo/retry#Jitter) to evenly distribute
+[jitter](https://godoc.org/github.com/octo/retry#Jitter) to evenly distribute
 retries over the retry period and limits the number of
-[Attempts](https://godoc.org/github.com/octo/retry#Attempts) per request. A
+[attempts](https://godoc.org/github.com/octo/retry#Attempts) per request. A
 [retry budget](https://godoc.org/github.com/octo/retry#Budget) optionally limits
 the number of retries sent to a backend to prevent overload.
 
+### context aware
+
+*retry* supports Go's [`context`](https://golang.org/pkg/context/) package.
+Contexts are the idiomatic way to make a call with a deadline and to cancel
+ongoing calls early. Refer to [Go Concurrency Patterns:
+Context](https://blog.golang.org/context) for more information on contexts.
+
+The `Do()` function takes a `context.Context` as its first argument and returns
+immediately when the context is cancelled, for example when a timeout is reached
+or when a client connection has been closed. The context is also passed to the
+callback, so the callback can also implement the concurrency pattern.
+[The documentation](https://godoc.org/github.com/octo/retry) has examples
+demonstrating how the `retry` and `context` packages interact.
+
 ### Permanent failures
 
-The ability to abort retries is another differentiator.
-The `retry` package allows to cancel retries on permanent errors, for example
-HTTP 4xx errors and invalid network addresses.
-The retried code can signal a permanent failure by wrapping the error with
+If the client code detects a permanent failure, for example an "access
+forbidden" error, it can abort, preventing additional retries. This returns the
+(inevitable) error right away instead of wasting additional time and resources
+on retrying needlessly.
+
+User code can signal a permanent failure by wrapping the error with
 [`Abort`](https://godoc.org/github.com/octo/retry#Abort) or by returning an
 error implementing the [`Error`](https://godoc.org/github.com/octo/retry#Error)
-interface. The `Error` interface is a subset of `net.Error`, i.e. permanent
-failures reported by the `net` package are automatically detected.
+interface. The `Error` interface is a subset of `net.Error`, i.e. errors created
+by the `net` package will automatically do the right thing.
 
 ### HTTP transport
 
