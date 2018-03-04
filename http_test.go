@@ -55,7 +55,7 @@ func TestTransport(t *testing.T) {
 			wantStatus: 403,
 		},
 		{
-			transport: &testTransport{status: []int{501, 502, 200}},
+			transport: &testTransport{status: []int{503, 502, 200}},
 			opts:      []Option{Attempts(2)},
 			wantErr:   true,
 		},

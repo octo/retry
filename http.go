@@ -16,12 +16,18 @@ import (
 // Custom options can be set by initializing Transport with NewTransport().
 //
 // One consequence of using this transport is that HTTP 5xx errors will be
-// reported as errors. HTTP 4xx errors are generally not retried (and therefore
+// reported as errors, with one exception:
+//
+// • The 501 "Not Implemented" status code is treated like as permanent
+// failure.
+//
+// HTTP 4xx errors are generally not retried (and therefore
 // don't result in an error being returned), with two exceptions:
 //
-// • The 429 "Too Many Requests" status code.
+// • The 423 "Locked" status code is treated like a temporary issue.
 //
-// • When the response has a 4xx status code and the "Retry-After" header.
+// • When the response has a 4xx status code and the "Retry-After" header the
+// request is retried.
 //
 // Transport needs to be able to read the request body multiple times.
 // Depending on the provided Request.Body, this happens in one of two ways:
@@ -62,17 +68,23 @@ func checkResponse(res *http.Response, err error) error {
 		return Abort(err)
 	}
 
-	if res.StatusCode >= 500 && res.StatusCode < 600 {
+	// special cases
+	if res.StatusCode == http.StatusNotImplemented {
+		// permanent condition, don't retry
+		return nil
+	} else if res.StatusCode == http.StatusLocked {
+		// temporary condition, retry
 		return errors.New(res.Status)
-	}
-
-	if res.StatusCode >= 400 && res.StatusCode < 500 {
-		if res.StatusCode == http.StatusTooManyRequests {
-			return errors.New(res.Status)
-		}
+	} else if res.StatusCode >= 500 && res.StatusCode < 600 {
+		// temporary condition, retry
+		return errors.New(res.Status)
+	} else if res.StatusCode >= 400 && res.StatusCode < 500 {
 		if _, ok := res.Header["Retry-After"]; ok {
+			// temporary condition, retry
 			return errors.New(res.Status)
 		}
+		// else: permanent condition, don't retry
+		return nil
 	}
 
 	return nil
