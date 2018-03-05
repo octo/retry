@@ -21,6 +21,18 @@ type internalOptions struct {
 }
 
 // Option is an option for Do().
+//
+// The following types implement Option:
+//
+// • Attempts
+//
+// • Budget
+//
+// • ExpBackoff
+//
+// • Jitter
+//
+// • Timeout
 type Option interface {
 	apply(*internalOptions)
 }
