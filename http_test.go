@@ -7,6 +7,7 @@ import (
 	"io/ioutil"
 	"log"
 	"net/http"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -21,6 +22,12 @@ func (t *testTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 		return nil, errors.New("req.Body == nil")
 	}
 	defer req.Body.Close()
+
+	if a := Attempt(req.Context()); a != 0 {
+		if got, want := req.Header.Get("Retry-Attempt"), strconv.Itoa(a); got != want {
+			return nil, fmt.Errorf("req.Header.Get(\"Retry-Attempt\") = %q, want %q", got, want)
+		}
+	}
 
 	payload, err := ioutil.ReadAll(req.Body)
 	if err != nil {

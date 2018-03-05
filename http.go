@@ -7,6 +7,7 @@ import (
 	"io"
 	"io/ioutil"
 	"net/http"
+	"strconv"
 )
 
 // Transport is a retrying "net/http".RoundTripper. The zero value of Transport
@@ -31,6 +32,14 @@ import (
 //
 // • Otherwise, Request.Body is copied into an internal buffer, which consumes
 // additional memory.
+//
+// When re-sending HTTP requests the transport adds the "Retry-Attempt" HTTP
+// header indicating that a request is a retry. The header value is an integer
+// counting the retries, i.e. "1" for the first retry (the second attempt
+// overall). Note: there is currently no standard or even de-facto standard way
+// of indicating retries to an HTTP server. When an appropriate RFC is
+// published or an industry standard emerges, this header will be changed
+// accordingly.
 //
 // Use "net/http".Request.WithContext() to pass a context to Do(). By default,
 // the request is associated with the background context.
@@ -100,7 +109,7 @@ func (t Transport) RoundTrip(req *http.Request) (*http.Response, error) {
 	}
 
 	var ret *http.Response
-	err := Do(req.Context(), func(_ context.Context) error {
+	err := Do(req.Context(), func(ctx context.Context) error {
 		rt := t.RoundTripper
 		if rt == nil {
 			rt = http.DefaultTransport
@@ -111,7 +120,11 @@ func (t Transport) RoundTrip(req *http.Request) (*http.Response, error) {
 			req.Body = ioutil.NopCloser(body)
 		}
 
-		res, err := rt.RoundTrip(req)
+		if a := Attempt(ctx); a > 0 {
+			req.Header.Set("Retry-Attempt", strconv.Itoa(a))
+		}
+
+		res, err := rt.RoundTrip(req.WithContext(ctx))
 		if err := checkResponse(res, err); err != nil {
 			return err
 		}
