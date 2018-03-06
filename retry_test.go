@@ -97,13 +97,10 @@ func TestAbort(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
-	var n int
 
 	cb := func(ctx context.Context) error {
-		n++
-
-		err := fmt.Errorf("n = %d", n)
-		if n == 1 {
+		err := fmt.Errorf("n = %d", Attempt(ctx)+1)
+		if Attempt(ctx) == 0 {
 			return err
 		}
 		return Abort(err)

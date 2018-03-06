@@ -114,6 +114,25 @@ func Abort(err error) Error {
 	return permanentError{err}
 }
 
+var contextAttemptKey struct{}
+
+func withAttempt(ctx context.Context, attempt int) context.Context {
+	return context.WithValue(ctx, contextAttemptKey, attempt)
+}
+
+// Attempt returns the number of previous attempts. In other words, it returns
+// the zero-based index of the request.
+//
+// Only call this function from within a retried function.
+func Attempt(ctx context.Context) int {
+	i := ctx.Value(contextAttemptKey)
+	if i == nil {
+		return 0
+	}
+
+	return i.(int)
+}
+
 // Do repeatedly calls cb until it succeeds. After cb fails (returns a non-nil
 // error), execution is paused for an exponentially increasing time. Execution
 // can be cancelled at any time by cancelling the context.
@@ -149,6 +168,8 @@ func do(ctx context.Context, cb func(context.Context) error, opts internalOption
 
 	var err error
 	for i := 0; Attempts(i) < opts.Attempts || opts.Attempts == 0; i++ {
+		ctx := withAttempt(ctx, i)
+
 		if !opts.budget.check(i != 0) {
 			return errors.New("retry budget exhausted")
 		}
