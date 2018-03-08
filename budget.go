@@ -13,7 +13,7 @@ import (
 // To add a retry budget for a specific service or backend, declare a Budget
 // variable that is shared by all Do() calls. See the example for a demonstration.
 //
-// Budget calculates the rate of inital calls and the rate of retries over a
+// Budget calculates the rate of initial calls and the rate of retries over a
 // moving one minute window. If the rate of retries exceeds Budget.Rate and the
 // ratio of retries to new calls exceeds Budget.Ratio, then retries are
 // dropped. Initial attempts are never dropped.
