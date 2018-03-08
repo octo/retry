@@ -49,8 +49,8 @@ type ExpBackoff struct {
 	Factor float64
 }
 
-func (opt ExpBackoff) apply(opts *internalOptions) {
-	opts.backoff = opt
+func (b ExpBackoff) apply(opts *internalOptions) {
+	opts.backoff = b
 }
 
 func (b ExpBackoff) delay(attempt int) time.Duration {
