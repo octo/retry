@@ -1,3 +1,5 @@
+[![Go Report Card](https://goreportcard.com/badge/github.com/octo/retry)](https://goreportcard.com/report/github.com/octo/retry)
+
 # retry
 
 Package **retry** implements a wrapper to retry failing function calls.
