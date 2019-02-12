@@ -99,7 +99,7 @@ func ExampleTransport() {
 
 	// Caveat: there is no specific context associated with this request.
 	// The net/http package uses the background context in that case.
-	// That means that this request will be retried indefinitely until is succeeds.
+	// That means that this request will be retried indefinitely until it succeeds.
 	res, err := c.Get("http://example.com/")
 	if err != nil {
 		log.Fatal(err)

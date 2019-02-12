@@ -19,15 +19,14 @@ import (
 // One consequence of using this transport is that HTTP 5xx errors will be
 // reported as errors, with one exception:
 //
-// • The 501 "Not Implemented" status code is treated like as permanent
-// failure.
+// • The 501 "Not Implemented" status code is treated as a permanent failure.
 //
 // HTTP 4xx errors are generally not retried (and therefore
 // don't result in an error being returned), with two exceptions:
 //
 // • The 423 "Locked" status code is treated like a temporary issue.
 //
-// • When the response has a 4xx status code and the "Retry-After" header the
+// • If the response has a 4xx status code and the "Retry-After" header, the
 // request is retried.
 //
 // Transport needs to be able to read the request body multiple times.
