@@ -8,8 +8,6 @@ import (
 	"io/ioutil"
 	"net/http"
 	"strconv"
-	"sync"
-	"time"
 )
 
 // Transport is a retrying "net/http".RoundTripper. The zero value of Transport
@@ -182,45 +180,11 @@ func (t Transport) RoundTrip(req *http.Request) (*http.Response, error) {
 type BudgetHandler struct {
 	http.Handler
 
-	// Rate is the minimum rate of HTTP requests (in requests per second).
-	// While Handler is handling fewer requests than this, responses are
-	// never modified.
-	Rate float64
-
-	// Ratio is the maximum ratio of retries to total requests that is
-	// considered "healthy". If the actual ratio exceeds this limit this is
+	// Budget is the server side retry budget. While Handler is handling
+	// fewer than Budget.Rate requests, responses are never modified. If
+	// the ratio of retries to total requests exceeds Budget.Ratio, this is
 	// taken as an indicator that the cluster as a whole is overloaded.
-	Ratio float64
-
-	mu           sync.Mutex
-	initialCalls *movingRate
-	retriedCalls *movingRate
-}
-
-func (h *BudgetHandler) overload(isRetry bool) bool {
-	h.mu.Lock()
-	defer h.mu.Unlock()
-
-	if h.retriedCalls == nil {
-		h.retriedCalls = newMovingRate()
-	}
-	if h.initialCalls == nil {
-		h.initialCalls = newMovingRate()
-	}
-
-	t := time.Now()
-
-	if isRetry {
-		h.retriedCalls.Add(t, 1)
-	} else {
-		h.initialCalls.Add(t, 1)
-	}
-
-	initialRate := h.initialCalls.Rate(t)
-	retriedRate := h.retriedCalls.Rate(t)
-	totalRate := initialRate + retriedRate
-
-	return totalRate > h.Rate && retriedRate/totalRate > h.Ratio
+	Budget
 }
 
 // ServeHTTP proxies the HTTP request to the embedded http.Handler.

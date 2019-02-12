@@ -170,7 +170,7 @@ func do(ctx context.Context, cb func(context.Context) error, opts internalOption
 	for i := 0; Attempts(i) < opts.Attempts || opts.Attempts == 0; i++ {
 		ctx := withAttempt(ctx, i)
 
-		if !opts.budget.check(i != 0) {
+		if !opts.budget.sendOK(i != 0) {
 			return errors.New("retry budget exhausted")
 		}
 

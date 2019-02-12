@@ -7,7 +7,7 @@ import (
 	"time"
 )
 
-// Budget implements a client-side retry budget, i.e. a limit for retries.
+// Budget implements a retry budget, i.e. a limit for retries.
 // Limiting the amount of retries sent to a service helps to mitigate cascading failures.
 //
 // To add a retry budget for a specific service or backend, declare a Budget
@@ -15,8 +15,7 @@ import (
 //
 // Budget calculates the rate of initial calls and the rate of retries over a
 // moving one minute window. If the rate of retries exceeds Budget.Rate and the
-// ratio of retries to new calls exceeds Budget.Ratio, then retries are
-// dropped. Initial attempts are never dropped.
+// ratio of retries exceeds Budget.Ratio, then retries are dropped.
 //
 // Implements the Option interface.
 type Budget struct {
@@ -24,8 +23,13 @@ type Budget struct {
 	// If fewer retries are attempted than this rate, retries are never throttled.
 	Rate float64
 
-	// Ratio is the maximum ratio of retries to initial calls.
-	// It is a number in the [0.0, Attempts()] range.
+	// Ratio is the maximum ratio of retries.
+	// When used as an option to Do(), it's the ratio of retries to initial
+	// calls. In that case ratio is a number in the [0.0, Attempts()]
+	// range. The initial request is never dropped.
+	// When used as part of BudgetHandler, it's the ratio of retries to
+	// total requests. In that case ratio is a number in the [0.0, 1.0]
+	// range.
 	Ratio float64
 
 	mu           sync.Mutex
@@ -37,7 +41,9 @@ func (b *Budget) apply(opts *internalOptions) {
 	opts.budget = b
 }
 
-func (b *Budget) check(isRetry bool) bool {
+// sendOK checks on the client side if a request should be sent. The first
+// (non-retried) call is always permitted, blocked retries are not accounted.
+func (b *Budget) sendOK(isRetry bool) bool {
 	if b == nil {
 		return true
 	}
@@ -62,12 +68,48 @@ func (b *Budget) check(isRetry bool) bool {
 	initialRate := b.initialCalls.Rate(t)
 	retriedRate := b.retriedCalls.Rate(t)
 	if initialRate > b.Rate &&
+		// not accounted
 		retriedRate/initialRate > b.Ratio {
 		return false
 	}
 
 	b.retriedCalls.Add(t, 1)
 	return true
+}
+
+// overload checks on the server side if the cluster appears to be in overload.
+// May return true even for initial (non-retried) requests and accounts all
+// requests, even when overload is signaled.
+func (b *Budget) overload(isRetry bool) bool {
+	if b == nil {
+		return true
+	}
+
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	if b.retriedCalls == nil {
+		b.retriedCalls = newMovingRate()
+	}
+	if b.initialCalls == nil {
+		b.initialCalls = newMovingRate()
+	}
+
+	t := time.Now()
+
+	if isRetry {
+		b.retriedCalls.Add(t, 1)
+	} else {
+		b.initialCalls.Add(t, 1)
+	}
+
+	initialRate := b.initialCalls.Rate(t)
+	retriedRate := b.retriedCalls.Rate(t)
+	// TODO(octo): this calculates the ratio as retried/total, while
+	// sendOK() uses retried/initial. That's confusing.
+	totalRate := initialRate + retriedRate
+
+	return totalRate > b.Rate && retriedRate/totalRate > b.Ratio
 }
 
 func timeRoundDown(t time.Time, d time.Duration) time.Time {

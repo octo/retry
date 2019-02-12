@@ -257,7 +257,9 @@ func testBudgetHandler(t *testing.T, ratio float64, wantStatus int) {
 		Transport: &testBudgetTransport{
 			Handler: &BudgetHandler{
 				Handler: hndl,
-				Ratio:   ratio,
+				Budget: Budget{
+					Ratio: ratio,
+				},
 			},
 		},
 	}
