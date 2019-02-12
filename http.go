@@ -8,6 +8,8 @@ import (
 	"io/ioutil"
 	"net/http"
 	"strconv"
+	"sync"
+	"time"
 )
 
 // Transport is a retrying "net/http".RoundTripper. The zero value of Transport
@@ -68,6 +70,16 @@ func NewTransport(base http.RoundTripper, opts ...Option) *Transport {
 	return t
 }
 
+func temporaryErrorCode(c int) bool {
+	return (c >= 500 && c < 600 && c != http.StatusNotImplemented) ||
+		c == http.StatusLocked
+}
+
+func permanentErrorCode(c int) bool {
+	return (c >= 400 && c < 500 && c != http.StatusLocked) ||
+		c == http.StatusNotImplemented
+}
+
 func checkResponse(res *http.Response, err error) error {
 	if err != nil {
 		if _, ok := err.(Error); ok {
@@ -76,23 +88,13 @@ func checkResponse(res *http.Response, err error) error {
 		return Abort(err)
 	}
 
-	// special cases
-	if res.StatusCode == http.StatusNotImplemented {
-		// permanent condition, don't retry
-		return nil
-	} else if res.StatusCode == http.StatusLocked {
-		// temporary condition, retry
+	if temporaryErrorCode(res.StatusCode) {
 		return errors.New(res.Status)
-	} else if res.StatusCode >= 500 && res.StatusCode < 600 {
-		// temporary condition, retry
-		return errors.New(res.Status)
-	} else if res.StatusCode >= 400 && res.StatusCode < 500 {
+	} else if permanentErrorCode(res.StatusCode) {
 		if _, ok := res.Header["Retry-After"]; ok {
 			// temporary condition, retry
 			return errors.New(res.Status)
 		}
-		// else: permanent condition, don't retry
-		return nil
 	}
 
 	return nil
@@ -148,4 +150,101 @@ func (t Transport) RoundTrip(req *http.Request) (*http.Response, error) {
 	}
 
 	return ret, nil
+}
+
+// BudgetHandler wraps an http.Handler and applies a server-side retry budget.
+// When the ratio of retries exceeds BudgetHandler.Ratio while the rate of
+// requests is at least BudgetHandler.Rate, i.e. when the retry budget is
+// exhausted, then temporary errors are changed to permanent errors.
+// A high ratio of retries is an indicator that the cluster as a whole is
+// overloaded. Returning permanent errors in an overload situation mitigates
+// the risk that retries are keeping the system in overload.
+//
+// An HTTP request is considered a retry if it has the "Retry-Attempt" HTTP
+// header set, as created by Transport. The value of the header is not
+// relevant, as long as it is not empty.
+//
+// Temporary errors are primarily responses with 5xx status codes, but there
+// are exceptions. See the documentation of "Transport" type for a detailed
+// discussion.
+//
+// When in an overload situation, BudgetHandler:
+//
+// • sets the status code to 429 "Too Many Requests" if the status code
+// indicates a temporary failure, and
+//
+// • removes the "Retry-After" header if set.
+//
+// Note that this is not a rate limiter. BudgetHandler will never decline a
+// request itself, it only makes sure that if a request is declined, for
+// example with 503 "Service Unavailable", the status code is upgraded to a
+// permanent error when the retry budget is exhausted, i.e. when in overload.
+type BudgetHandler struct {
+	http.Handler
+
+	// Rate is the minimum rate of HTTP requests (in requests per second).
+	// While Handler is handling fewer requests than this, responses are
+	// never modified.
+	Rate float64
+
+	// Ratio is the maximum ratio of retries to total requests that is
+	// considered "healthy". If the actual ratio exceeds this limit this is
+	// taken as an indicator that the cluster as a whole is overloaded.
+	Ratio float64
+
+	mu           sync.Mutex
+	initialCalls *movingRate
+	retriedCalls *movingRate
+}
+
+func (h *BudgetHandler) overload(isRetry bool) bool {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+
+	if h.retriedCalls == nil {
+		h.retriedCalls = newMovingRate()
+	}
+	if h.initialCalls == nil {
+		h.initialCalls = newMovingRate()
+	}
+
+	t := time.Now()
+
+	if isRetry {
+		h.retriedCalls.Add(t, 1)
+	} else {
+		h.initialCalls.Add(t, 1)
+	}
+
+	initialRate := h.initialCalls.Rate(t)
+	retriedRate := h.retriedCalls.Rate(t)
+	totalRate := initialRate + retriedRate
+
+	return totalRate > h.Rate && retriedRate/totalRate > h.Ratio
+}
+
+// ServeHTTP proxies the HTTP request to the embedded http.Handler.
+func (h *BudgetHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
+	isRetry := req.Header.Get("Retry-Attempt") != ""
+
+	if h.overload(isRetry) {
+		h.Handler.ServeHTTP(&overloadResponseWriter{
+			ResponseWriter: w,
+		}, req)
+	} else {
+		h.Handler.ServeHTTP(w, req)
+	}
+}
+
+type overloadResponseWriter struct {
+	http.ResponseWriter
+}
+
+func (w *overloadResponseWriter) WriteHeader(statusCode int) {
+	w.Header().Del("Retry-After")
+	if temporaryErrorCode(statusCode) {
+		statusCode = http.StatusTooManyRequests
+	}
+
+	w.ResponseWriter.WriteHeader(statusCode)
 }

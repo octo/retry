@@ -46,16 +46,10 @@ func (b *Budget) check(isRetry bool) bool {
 	defer b.mu.Unlock()
 
 	if b.retriedCalls == nil {
-		b.retriedCalls = &movingRate{
-			BucketLength: time.Second,
-			BucketNum:    60,
-		}
+		b.retriedCalls = newMovingRate()
 	}
 	if b.initialCalls == nil {
-		b.initialCalls = &movingRate{
-			BucketLength: time.Second,
-			BucketNum:    60,
-		}
+		b.initialCalls = newMovingRate()
 	}
 
 	t := time.Now()
@@ -91,6 +85,13 @@ type movingRate struct {
 
 	counts     []int
 	lastUpdate time.Time
+}
+
+func newMovingRate() *movingRate {
+	return &movingRate{
+		BucketLength: time.Second,
+		BucketNum:    60,
+	}
 }
 
 func (mr *movingRate) count() float64 {

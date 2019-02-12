@@ -6,6 +6,7 @@ import (
 	"log"
 	"math"
 	"math/rand"
+	"os"
 	"sort"
 	"sync"
 	"testing"
@@ -43,7 +44,9 @@ func ExampleBudget() {
 }
 
 func TestBudget(t *testing.T) {
-	t.Parallel()
+	if os.Getenv("RETRY_ENDTOEND") == "" {
+		t.Skip("set the \"RETRY_ENDTOEND\" environment variable to enable this test")
+	}
 
 	var (
 		callsCount int
