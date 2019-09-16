@@ -108,6 +108,10 @@ type permanentError struct {
 
 func (permanentError) Temporary() bool { return false }
 
+func (e permanentError) Unwrap() error {
+	return e.error
+}
+
 // Abort wraps err so it implements the Error interface and reports a permanent
 // condition. This causes Do() to return immediately with the wrapped error.
 func Abort(err error) Error {
