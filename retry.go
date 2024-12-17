@@ -37,10 +37,10 @@ type Option interface {
 	apply(*internalOptions)
 }
 
-// ExpBackoff sets custom backoff parameters. After the first
-// failure, execution pauses for the duration specified by base. After each
-// subsequent failure the delay is doubled until max is reached. Execution is
-// never paused for longer than the duration max.
+// ExpBackoff sets custom backoff parameters.
+// After the first failure, execution pauses for the duration specified by base.
+// After each subsequent failure the delay is multiplied by Factor until max is reached.
+// Execution is never paused for longer than the Max duration.
 //
 // Implements the Option interface.
 type ExpBackoff struct {
@@ -142,13 +142,14 @@ func Attempt(ctx context.Context) int {
 // can be cancelled at any time by cancelling the context.
 //
 // By default, this function behaves as if the following options were passed:
-//   Attempts(4),
-//   ExpBackoff{
-//     Base:   100 * time.Millisecond,
-//     Max:    2 * time.Second,
-//     Factor: 2.0,
-//   },
-//   FullJitter,
+//
+//	Attempts(4),
+//	ExpBackoff{
+//	  Base:   100 * time.Millisecond,
+//	  Max:    2 * time.Second,
+//	  Factor: 2.0,
+//	},
+//	FullJitter,
 func Do(ctx context.Context, cb func(context.Context) error, opts ...Option) error {
 	intOpts := internalOptions{
 		Attempts: Attempts(4),
