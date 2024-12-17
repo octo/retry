@@ -118,10 +118,10 @@ func Abort(err error) Error {
 	return permanentError{err}
 }
 
-var contextAttemptKey struct{}
+type ctxKey struct{}
 
 func withAttempt(ctx context.Context, attempt int) context.Context {
-	return context.WithValue(ctx, contextAttemptKey, attempt)
+	return context.WithValue(ctx, ctxKey{}, attempt)
 }
 
 // Attempt returns the number of previous attempts. In other words, it returns
@@ -129,7 +129,7 @@ func withAttempt(ctx context.Context, attempt int) context.Context {
 //
 // Only call this function from within a retried function.
 func Attempt(ctx context.Context) int {
-	i := ctx.Value(contextAttemptKey)
+	i := ctx.Value(ctxKey{})
 	if i == nil {
 		return 0
 	}
