@@ -1,13 +1,13 @@
-name: Build
+name: Go
 
 on:
   push:
-    branches: ["master"]
+    branches: ["main"]
   pull_request:
-    branches: ["master"]
+    branches: ["main"]
 
 jobs:
-  build:
+  '🏗️ Build and test':
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
