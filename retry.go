@@ -168,6 +168,9 @@ func Do(ctx context.Context, cb func(context.Context) error, opts ...Option) err
 	return do(ctx, cb, intOpts)
 }
 
+// ErrExhausted is returned by Do() when the retry budget is exhausted.
+var ErrExhausted = errors.New("retry budget exhausted")
+
 func do(ctx context.Context, cb func(context.Context) error, opts internalOptions) error {
 	ch := make(chan error)
 
@@ -176,7 +179,7 @@ func do(ctx context.Context, cb func(context.Context) error, opts internalOption
 		ctx := withAttempt(ctx, i)
 
 		if !opts.budget.sendOK(i != 0) {
-			return errors.New("retry budget exhausted")
+			return ErrExhausted
 		}
 
 		go func(ctx context.Context) {

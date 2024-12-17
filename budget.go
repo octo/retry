@@ -16,6 +16,7 @@ import (
 // Budget calculates the rate of initial calls and the rate of retries over a
 // moving one minute window. If the rate of retries exceeds Budget.Rate and the
 // ratio of retries exceeds Budget.Ratio, then retries are dropped.
+// The Do() function returns ErrExhausted in this case.
 //
 // Implements the Option interface.
 type Budget struct {
