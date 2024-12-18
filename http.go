@@ -4,8 +4,8 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"io"
-	"io/ioutil"
 	"net/http"
 	"strconv"
 )
@@ -61,9 +61,7 @@ func NewTransport(base http.RoundTripper, opts ...Option) *Transport {
 	t := &Transport{
 		RoundTripper: base,
 	}
-	for _, opt := range opts {
-		t.opts = append(t.opts, opt)
-	}
+	t.opts = append(t.opts, opts...)
 
 	return t
 }
@@ -78,6 +76,15 @@ func permanentErrorCode(c int) bool {
 		c == http.StatusNotImplemented
 }
 
+// checkResponse checks the HTTP response for retryable errors.
+//
+// Temporary errors are returned as an error and are therefore retried.
+//
+// Permanent errors are *not* returned as an error and are therefore *not* retried.
+// An argument could be made to return them as a permanent error, too.
+// However, this would mean a significant diversion from the standard net/http semantic.
+//
+// If err is not nil, it is wrapped in permanentError and returned.
 func checkResponse(res *http.Response, err error) error {
 	if err != nil {
 		if _, ok := err.(Error); ok {
@@ -100,26 +107,15 @@ func checkResponse(res *http.Response, err error) error {
 
 // RoundTrip implements a retrying "net/http".RoundTripper.
 func (t Transport) RoundTrip(req *http.Request) (*http.Response, error) {
-	var body io.ReadSeeker
 	if req.Body != nil {
 		defer req.Body.Close()
-		if rs, ok := req.Body.(io.ReadSeeker); ok {
-			body = rs
-		} else {
-			data, err := ioutil.ReadAll(req.Body)
-			if err != nil {
-				return nil, err
-			}
-			body = bytes.NewReader(data)
-		}
 	}
 
-	opts := t.opts
-	if opts == nil {
-		opts = []Option{}
-	}
+	var (
+		body     = seekableBody(req)
+		response *http.Response
+	)
 
-	var ret *http.Response
 	err := Do(req.Context(), func(ctx context.Context) error {
 		rt := t.RoundTripper
 		if rt == nil {
@@ -127,8 +123,11 @@ func (t Transport) RoundTrip(req *http.Request) (*http.Response, error) {
 		}
 
 		if body != nil {
-			body.Seek(0, io.SeekStart)
-			req.Body = ioutil.NopCloser(body)
+			if _, err := body.Seek(0, io.SeekStart); err != nil {
+				return fmt.Errorf("rewinding request body: %w", err)
+			}
+
+			req.Body = io.NopCloser(body)
 		}
 
 		if a := Attempt(ctx); a > 0 {
@@ -140,14 +139,34 @@ func (t Transport) RoundTrip(req *http.Request) (*http.Response, error) {
 			return err
 		}
 
-		ret = res
+		response = res
+
 		return nil
-	}, opts...)
+	}, t.opts...)
+
 	if err != nil {
 		return nil, err
 	}
 
-	return ret, nil
+	return response, nil
+}
+
+func seekableBody(req *http.Request) io.ReadSeeker {
+	if req.Body == nil {
+		return nil
+	}
+
+	if rs, ok := req.Body.(io.ReadSeeker); ok {
+		return rs
+	}
+
+	// If the body is not a ReadSeeker, read it entirely and create a new ReadSeeker
+	data, err := io.ReadAll(req.Body)
+	if err != nil {
+		return nil
+	}
+
+	return bytes.NewReader(data)
 }
 
 // BudgetHandler wraps an http.Handler and applies a server-side retry budget.
