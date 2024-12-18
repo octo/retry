@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"io/ioutil"
 	"net/http"
@@ -120,8 +121,11 @@ func (t Transport) RoundTrip(req *http.Request) (*http.Response, error) {
 		}
 
 		if body != nil {
-			body.Seek(0, io.SeekStart)
-			req.Body = ioutil.NopCloser(body)
+			if _, err := body.Seek(0, io.SeekStart); err != nil {
+				return fmt.Errorf("rewinding request body: %w", err)
+			}
+
+			req.Body = io.NopCloser(body)
 		}
 
 		if a := Attempt(ctx); a > 0 {
