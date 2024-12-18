@@ -76,6 +76,15 @@ func permanentErrorCode(c int) bool {
 		c == http.StatusNotImplemented
 }
 
+// checkResponse checks the HTTP response for retryable errors.
+//
+// Temporary errors are returned as an error and are therefore retried.
+//
+// Permanent errors are *not* returned as an error and are therefore *not* retried.
+// An argument could be made to return them as a permanent error, too.
+// However, this would mean a significant diversion from the standard net/http semantic.
+//
+// If err is not nil, it is wrapped in permanentError and returned.
 func checkResponse(res *http.Response, err error) error {
 	if err != nil {
 		if _, ok := err.(Error); ok {
