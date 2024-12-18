@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net/http"
 	"strconv"
 )
@@ -99,21 +98,15 @@ func checkResponse(res *http.Response, err error) error {
 
 // RoundTrip implements a retrying "net/http".RoundTripper.
 func (t Transport) RoundTrip(req *http.Request) (*http.Response, error) {
-	var body io.ReadSeeker
 	if req.Body != nil {
 		defer req.Body.Close()
-		if rs, ok := req.Body.(io.ReadSeeker); ok {
-			body = rs
-		} else {
-			data, err := ioutil.ReadAll(req.Body)
-			if err != nil {
-				return nil, err
-			}
-			body = bytes.NewReader(data)
-		}
 	}
 
-	var ret *http.Response
+	var (
+		body     = seekableBody(req)
+		response *http.Response
+	)
+
 	err := Do(req.Context(), func(ctx context.Context) error {
 		rt := t.RoundTripper
 		if rt == nil {
@@ -137,14 +130,34 @@ func (t Transport) RoundTrip(req *http.Request) (*http.Response, error) {
 			return err
 		}
 
-		ret = res
+		response = res
+
 		return nil
 	}, t.opts...)
+
 	if err != nil {
 		return nil, err
 	}
 
-	return ret, nil
+	return response, nil
+}
+
+func seekableBody(req *http.Request) io.ReadSeeker {
+	if req.Body == nil {
+		return nil
+	}
+
+	if rs, ok := req.Body.(io.ReadSeeker); ok {
+		return rs
+	}
+
+	// If the body is not a ReadSeeker, read it entirely and create a new ReadSeeker
+	data, err := io.ReadAll(req.Body)
+	if err != nil {
+		return nil
+	}
+
+	return bytes.NewReader(data)
 }
 
 // BudgetHandler wraps an http.Handler and applies a server-side retry budget.
