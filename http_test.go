@@ -5,7 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"log"
 	"net/http"
 	"os"
@@ -32,10 +32,11 @@ func (t *testTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 		}
 	}
 
-	payload, err := ioutil.ReadAll(req.Body)
+	payload, err := io.ReadAll(req.Body)
 	if err != nil {
 		return nil, err
 	}
+
 	if got, want := string(payload), "request payload"; got != want {
 		return nil, fmt.Errorf("request payload: got %q, want %q", got, want)
 	}
@@ -46,6 +47,7 @@ func (t *testTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 
 	res := &http.Response{}
 	res.StatusCode, t.status = t.status[0], t.status[1:]
+
 	return res, nil
 }
 
@@ -205,7 +207,7 @@ func (t *testBudgetTransport) RoundTrip(req *http.Request) (*http.Response, erro
 		ProtoMajor:    1,
 		ProtoMinor:    1,
 		Header:        w.header,
-		Body:          ioutil.NopCloser(&w.buffer),
+		Body:          io.NopCloser(&w.buffer),
 		ContentLength: int64(w.buffer.Len()),
 		Request:       req,
 	}, nil
