@@ -61,9 +61,7 @@ func NewTransport(base http.RoundTripper, opts ...Option) *Transport {
 	t := &Transport{
 		RoundTripper: base,
 	}
-	for _, opt := range opts {
-		t.opts = append(t.opts, opt)
-	}
+	t.opts = append(t.opts, opts...)
 
 	return t
 }
@@ -114,11 +112,6 @@ func (t Transport) RoundTrip(req *http.Request) (*http.Response, error) {
 		}
 	}
 
-	opts := t.opts
-	if opts == nil {
-		opts = []Option{}
-	}
-
 	var ret *http.Response
 	err := Do(req.Context(), func(ctx context.Context) error {
 		rt := t.RoundTripper
@@ -142,7 +135,7 @@ func (t Transport) RoundTrip(req *http.Request) (*http.Response, error) {
 
 		ret = res
 		return nil
-	}, opts...)
+	}, t.opts...)
 	if err != nil {
 		return nil, err
 	}
