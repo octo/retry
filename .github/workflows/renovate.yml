@@ -11,11 +11,12 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-        
+
       - name: Self-hosted Renovate
         uses: renovatebot/github-action@v39.0.5
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           configurationFile: .renovate.json
         env:
-          LOG_LEVEL: 'debug'
+          LOG_LEVEL: 'info'
+          RENOVATE_REPOSITORIES: ${{ github.repository }}
