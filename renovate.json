@@ -1,7 +1,6 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": ["config:recommended"],
-  "schedule": ["before 5am on monday"],
   "postUpdateOptions": ["gomodTidy"],
   "automerge": false,
   "prHourlyLimit": 0,
