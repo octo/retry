@@ -40,7 +40,9 @@ Context](https://blog.golang.org/context) for more information on contexts.
 The `Do()` function takes a `context.Context` as its first argument and returns
 immediately when the context is cancelled, for example when a timeout is reached
 or when a client connection has been closed. The context is also passed to the
-callback, so the callback can also implement the concurrency pattern.
+callback, so the callback can also implement the concurrency pattern. To give a
+running callback time to clean up and return its own result when the context is
+cancelled, set a [grace period](https://godoc.org/github.com/octo/retry#GracePeriod).
 [The documentation](https://godoc.org/github.com/octo/retry) has examples
 demonstrating how the `retry` and `context` packages interact.
 
