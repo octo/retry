@@ -18,6 +18,7 @@ type internalOptions struct {
 	budget *Budget
 	Jitter
 	Timeout
+	GracePeriod
 }
 
 // Option is an option for Do().
@@ -29,6 +30,8 @@ type internalOptions struct {
 // • Budget
 //
 // • ExpBackoff
+//
+// • GracePeriod
 //
 // • Jitter
 //
@@ -86,14 +89,35 @@ const Indefinitely Attempts = 0
 // Timeout specifies the timeout for each individual attempt. When specified,
 // the context passed to the callback is cancelled after this duration. When
 // the timeout expires, the callback should return as quickly as possible. The
-// retry logic continues without waiting for the callback to return, though, so
-// callbacks should be thread-safe.
+// retry logic waits for the callback to return for at most the GracePeriod,
+// which is zero by default, and then continues with the next attempt. A
+// callback that is still running then runs concurrently with the next attempt,
+// so callbacks should be thread-safe.
 //
 // Implements the Option interface.
 type Timeout time.Duration
 
 func (opt Timeout) apply(opts *internalOptions) {
 	opts.Timeout = opt
+}
+
+// GracePeriod specifies how long Do() waits for a running callback to return
+// after the callback's context is cancelled, either because the context passed
+// to Do() is cancelled or because the attempt's Timeout expired.
+//
+// If the callback returns within the grace period, its result is used: Do()
+// returns it if the context passed to Do() was cancelled, and otherwise retries
+// or returns it as usual. If the callback does not return in time, the context's
+// error is used instead, and the callback keeps running in the background.
+//
+// The zero value does not wait, so Do() returns as soon as its context is
+// cancelled.
+//
+// Implements the Option interface.
+type GracePeriod time.Duration
+
+func (opt GracePeriod) apply(opts *internalOptions) {
+	opts.GracePeriod = opt
 }
 
 // Error is an error type that controls retry behavior. If Temporary() returns
@@ -144,7 +168,8 @@ func Attempt(ctx context.Context) int {
 
 // Do repeatedly calls cb until it succeeds. After cb fails (returns a non-nil
 // error), execution is paused for an exponentially increasing time. Execution
-// can be cancelled at any time by cancelling the context.
+// can be cancelled at any time by cancelling the context; use GracePeriod to
+// give a running callback time to return when that happens.
 //
 // By default, this function behaves as if the following options were passed:
 //
@@ -177,10 +202,6 @@ func Do(ctx context.Context, cb func(context.Context) error, opts ...Option) err
 var ErrExhausted = errors.New("retry budget exhausted")
 
 func do(ctx context.Context, cb func(context.Context) error, opts internalOptions) error {
-	// The channel is buffered so that the goroutine running cb can exit when cb
-	// returns after do() stopped waiting for it, because ctx was cancelled.
-	ch := make(chan error, 1)
-
 	var err error
 	for i := 0; Attempts(i) < opts.Attempts || opts.Attempts == 0; i++ {
 		ctx := withAttempt(ctx, i)
@@ -189,27 +210,18 @@ func do(ctx context.Context, cb func(context.Context) error, opts internalOption
 			return ErrExhausted
 		}
 
-		go func(ctx context.Context) {
-			if opts.Timeout != 0 {
-				ch <- callWithTimeout(ctx, cb, opts.Timeout)
-			} else {
-				ch <- cb(ctx)
+		err = call(ctx, cb, opts)
+		if err == nil {
+			return nil
+		}
+		if ctx.Err() != nil {
+			return err
+		}
+		if retryErr, ok := err.(Error); ok && !retryErr.Temporary() {
+			if p, ok := err.(permanentError); ok {
+				return p.error
 			}
-		}(ctx)
-
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case err = <-ch:
-			if err == nil {
-				return nil
-			}
-			if retryErr, ok := err.(Error); ok && !retryErr.Temporary() {
-				if p, ok := err.(permanentError); ok {
-					return p.error
-				}
-				return err
-			}
+			return err
 		}
 
 		delay := opts.delay(i)
@@ -228,12 +240,19 @@ func do(ctx context.Context, cb func(context.Context) error, opts internalOption
 	return err
 }
 
-func callWithTimeout(ctx context.Context, cb func(context.Context) error, timeout Timeout) error {
-	ctx, cancel := context.WithTimeout(ctx, time.Duration(timeout))
-	defer cancel()
+// call makes a single attempt: it runs cb in a goroutine and returns its
+// result. If ctx is cancelled or the attempt's Timeout expires before cb
+// returns, call waits for cb for at most the GracePeriod and returns the
+// context's error if cb does not return in time.
+func call(ctx context.Context, cb func(context.Context) error, opts internalOptions) error {
+	if opts.Timeout != 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, time.Duration(opts.Timeout))
+		defer cancel()
+	}
 
 	// The channel is buffered so that the goroutine running cb can exit when cb
-	// returns after the timeout expired.
+	// returns after call stopped waiting for it.
 	ch := make(chan error, 1)
 
 	go func(ctx context.Context) {
@@ -241,9 +260,22 @@ func callWithTimeout(ctx context.Context, cb func(context.Context) error, timeou
 	}(ctx)
 
 	select {
-	case <-ctx.Done():
-		return ctx.Err()
 	case err := <-ch:
 		return err
+	case <-ctx.Done():
+	}
+
+	if opts.GracePeriod <= 0 {
+		return ctx.Err()
+	}
+
+	timer := time.NewTimer(time.Duration(opts.GracePeriod))
+	defer timer.Stop()
+
+	select {
+	case err := <-ch:
+		return err
+	case <-timer.C:
+		return ctx.Err()
 	}
 }

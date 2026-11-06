@@ -16,7 +16,8 @@ import (
 // means the result is in the range [80,100) ms.
 //
 // The following formula is used:
-//   delay = Jitter * random_between(0, delay) + (1 - Jitter) * delay
+//
+//	delay = Jitter * random_between(0, delay) + (1 - Jitter) * delay
 //
 // Special cases: the zero value is treated equally to FullJitter. Minus one
 // (-1.0) deactivates jitter.
