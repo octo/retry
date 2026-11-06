@@ -172,7 +172,9 @@ func Do(ctx context.Context, cb func(context.Context) error, opts ...Option) err
 var ErrExhausted = errors.New("retry budget exhausted")
 
 func do(ctx context.Context, cb func(context.Context) error, opts internalOptions) error {
-	ch := make(chan error)
+	// The channel is buffered so that the goroutine running cb can exit when cb
+	// returns after do() stopped waiting for it, because ctx was cancelled.
+	ch := make(chan error, 1)
 
 	var err error
 	for i := 0; Attempts(i) < opts.Attempts || opts.Attempts == 0; i++ {
@@ -225,7 +227,9 @@ func callWithTimeout(ctx context.Context, cb func(context.Context) error, timeou
 	ctx, cancel := context.WithTimeout(ctx, time.Duration(timeout))
 	defer cancel()
 
-	ch := make(chan error)
+	// The channel is buffered so that the goroutine running cb can exit when cb
+	// returns after the timeout expired.
+	ch := make(chan error, 1)
 
 	go func(ctx context.Context) {
 		ch <- cb(ctx)

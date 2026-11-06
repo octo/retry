@@ -2,10 +2,12 @@ package retry
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"net"
 	"net/http"
+	"runtime"
 	"testing"
 	"time"
 )
@@ -108,6 +110,72 @@ func TestAbort(t *testing.T) {
 
 	if err := Do(ctx, cb, WithoutJitter); err == nil || err.Error() != "n = 2" {
 		t.Errorf("Do() = %v, want %v", err, fmt.Errorf("n = %d", 2))
+	}
+}
+
+// waitForGoroutines fails the test unless the number of goroutines drops to at
+// most want within a second.
+func waitForGoroutines(t *testing.T, want int) {
+	t.Helper()
+
+	deadline := time.Now().Add(time.Second)
+	for runtime.NumGoroutine() > want {
+		if time.Now().After(deadline) {
+			t.Fatalf("goroutines = %d after the callback returned, want at most %d", runtime.NumGoroutine(), want)
+		}
+
+		time.Sleep(10 * time.Millisecond)
+	}
+}
+
+// TestAbandonedCallbackExits ensures that the goroutines running a callback
+// exit once the callback returns, even after Do() stopped waiting for it.
+//
+// It must not run in parallel, so that the number of goroutines is stable.
+func TestAbandonedCallbackExits(t *testing.T) {
+	tests := []struct {
+		name string
+		opts []Option
+		// timeout is the timeout of the context passed to Do().
+		timeout time.Duration
+		wantErr error
+	}{
+		{
+			name:    "context cancelled",
+			timeout: 10 * time.Millisecond,
+			wantErr: context.DeadlineExceeded,
+		},
+		{
+			name:    "attempt timed out",
+			opts:    []Option{Attempts(1), Timeout(10 * time.Millisecond)},
+			timeout: time.Minute,
+			wantErr: context.DeadlineExceeded,
+		},
+	}
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			before := runtime.NumGoroutine()
+
+			ctx, cancel := context.WithTimeout(context.Background(), tt.timeout)
+			defer cancel()
+
+			// The callback ignores its context and returns only once released.
+			release := make(chan struct{})
+			cb := func(context.Context) error {
+				<-release
+				return nil
+			}
+
+			if err := Do(ctx, cb, tt.opts...); !errors.Is(err, tt.wantErr) {
+				t.Errorf("Do() = %v, want %v", err, tt.wantErr)
+			}
+
+			close(release)
+			cancel()
+
+			waitForGoroutines(t, before)
+		})
 	}
 }
 
