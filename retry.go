@@ -78,6 +78,11 @@ func (opt Attempts) apply(opts *internalOptions) {
 	opts.Attempts = opt
 }
 
+// Indefinitely removes the limit on the number of attempts. Do() then calls
+// the callback until it succeeds, returns a permanent error, the Budget is
+// exhausted, or the context is cancelled.
+const Indefinitely Attempts = 0
+
 // Timeout specifies the timeout for each individual attempt. When specified,
 // the context passed to the callback is cancelled after this duration. When
 // the timeout expires, the callback should return as quickly as possible. The
